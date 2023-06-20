@@ -296,6 +296,12 @@ static int set_mem_access(struct domain *d, struct p2m_domain *p2m,
     return rc;
 }
 
+int p2m_set_mem_access_single(struct domain *d, struct p2m_domain *p2m,
+                          struct p2m_domain *ap2m, p2m_access_t a,
+                          gfn_t gfn){
+    return set_mem_access(d, p2m, ap2m, a, gfn);
+}
+
 bool xenmem_access_to_p2m_access(const struct p2m_domain *p2m,
                                  xenmem_access_t xaccess,
                                  p2m_access_t *paccess)

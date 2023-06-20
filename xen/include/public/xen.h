@@ -422,6 +422,8 @@ DEFINE_XEN_GUEST_HANDLE(xen_ulong_t);
 #define MMUEXT_FLUSH_CACHE_GLOBAL 18
 #define MMUEXT_MARK_SUPER       19
 #define MMUEXT_UNMARK_SUPER     20
+#define MMUEXT_MARK_XOM       21
+#define MMUEXT_UNMARK_XOM     22
 /* ` } */
 
 #ifndef __ASSEMBLY__

@@ -84,6 +84,10 @@ long p2m_set_mem_access_multi(struct domain *d,
                               uint32_t nr, uint32_t start, uint32_t mask,
                               unsigned int altp2m_idx);
 
+int p2m_set_mem_access_single(struct domain *d, struct p2m_domain *p2m,
+                          struct p2m_domain *ap2m, p2m_access_t a,
+                          gfn_t gfn);
+
 /*
  * Get access type for a gfn.
  * If gfn == INVALID_GFN, gets the default access type.

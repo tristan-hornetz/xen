@@ -110,6 +110,7 @@
 #include <xen/efi.h>
 #include <xen/hypercall.h>
 #include <xen/mm.h>
+#include <xen/xom_seal.h>
 #include <asm/paging.h>
 #include <asm/shadow.h>
 #include <asm/page.h>
@@ -3901,6 +3902,14 @@ long do_mmuext_op(
         case MMUEXT_MARK_SUPER:
         case MMUEXT_UNMARK_SUPER:
             rc = -EOPNOTSUPP;
+            break;
+
+        case MMUEXT_MARK_XOM:
+            rc = set_xom_seal(&op, curr);
+            break;
+
+        case MMUEXT_UNMARK_XOM:
+            rc = clear_xom_seal(&op, curr);
             break;
 
         default:
