@@ -32,6 +32,9 @@ violations are meant to be documented as deviations, while some others
 should be fixed. Both compliance and documenting deviations on the
 existing codebase are work-in-progress.
 
+The list below might need to be updated over time. Reach out to THE REST
+maintainers if you want to suggest a change.
+
 .. list-table::
    :header-rows: 1
 
@@ -39,6 +42,12 @@ existing codebase are work-in-progress.
      - Severity
      - Summary
      - Notes
+
+   * - `Dir 1.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/D_01_01.c>`_
+     - Required
+     - Any implementation-defined behaviour on which the output of the
+       program depends shall be documented and understood
+     -
 
    * - `Dir 2.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/D_02_01.c>`_
      - Required
@@ -56,6 +65,13 @@ existing codebase are work-in-progress.
      - Precautions shall be taken in order to prevent the contents of a
        header file being included more than once
      -
+
+   * - `Dir 4.11 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/D_04_11.c>`_
+     - Required
+     - The validity of values passed to library functions shall be checked
+     - We do not have libraries in Xen (libfdt and others are not
+       considered libraries from MISRA C point of view as they are
+       imported in source form)
 
    * - `Dir 4.14 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/D_04_14.c>`_
      - Required
@@ -75,6 +91,18 @@ existing codebase are work-in-progress.
      - Required
      - There shall be no occurrence of undefined or critical unspecified
        behaviour
+     -
+
+   * - `Rule 1.4 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/>`_
+     - Required
+     - Emergent language features shall not be used
+     - Emergent language features, such as C11 features, should not be
+       confused with similar compiler extensions, which we use. When the
+       time comes to adopt C11, this rule will be revisited.
+
+   * - `Rule 2.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_02_01_1.c>`_
+     - Required
+     - A project shall not contain unreachable code
      -
 
    * - `Rule 2.6 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_02_06.c>`_
@@ -133,6 +161,12 @@ existing codebase are work-in-progress.
        headers (xen/include/public/) are allowed to retain longer
        identifiers for backward compatibility.
 
+   * - `Rule 6.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_06_01.c>`_
+     - Required
+     - Bit-fields shall only be declared with an appropriate type
+     - In addition to the C99 types, we also consider appropriate types
+       enum and all explicitly signed / unsigned integer types.
+
    * - `Rule 6.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_06_02.c>`_
      - Required
      - Single-bit named bit fields shall not be of a signed type
@@ -142,6 +176,32 @@ existing codebase are work-in-progress.
      - Required
      - Octal constants shall not be used
      -
+
+   * - `Rule 7.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_07_02.c>`_
+     - Required
+     - A "u" or "U" suffix shall be applied to all integer constants
+       that are represented in an unsigned type
+     - The rule asks that any integer literal that is implicitly
+       unsigned is made explicitly unsigned by using one of the
+       indicated suffixes.  As an example, on a machine where the int
+       type is 32-bit wide, 0x77777777 is signed whereas 0x80000000 is
+       (implicitly) unsigned. In order to comply with the rule, the
+       latter should be rewritten as either 0x80000000u or 0x80000000U.
+       Consistency considerations may suggest using the same suffix even
+       when not required by the rule. For instance, if one has:
+
+       Original: f(0x77777777); f(0x80000000);
+
+       one should do
+
+       Solution 1: f(0x77777777U); f(0x80000000U);
+
+       over
+
+       Solution 2: f(0x77777777); f(0x80000000U);
+
+       after having ascertained that "Solution 1" is compatible with the
+       intended semantics.
 
    * - `Rule 7.3 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_07_03.c>`_
      - Required
@@ -312,6 +372,11 @@ existing codebase are work-in-progress.
      - The pointer returned by the Standard Library functions asctime ctime
        gmtime localtime localeconv getenv setlocale or strerror shall not be
        used following a subsequent call to the same function
+     -
+
+   * - `Rule 21.21 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/>`_
+     - Required
+     - The Standard Library function system of <stdlib.h> shall not be used
      -
 
    * - `Rule 22.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_22_02.c>`_

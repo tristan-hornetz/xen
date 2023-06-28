@@ -4,7 +4,7 @@
 #undef ENTRY
 #undef ALIGN
 
-OUTPUT_ARCH(riscv)
+OUTPUT_ARCH(powerpc:common64)
 ENTRY(start)
 
 PHDRS
@@ -15,11 +15,25 @@ PHDRS
 #endif
 }
 
+/**
+ * OpenFirmware's base load address is 0x400000 (XEN_VIRT_START).
+ * By defining sections this way, we can keep our virtual address base at 0x400000
+ * while keeping the physical base at 0x0.
+ *
+ * Otherwise, OpenFirmware incorrectly loads .text at 0x400000 + 0x400000 = 0x800000.
+ * Taken from x86/xen.lds.S
+ */
+#ifdef CONFIG_LD_IS_GNU
+# define DECL_SECTION(x) x : AT(ADDR(#x) - XEN_VIRT_START)
+#else
+# define DECL_SECTION(x) x : AT(ADDR(x) - XEN_VIRT_START)
+#endif
+
 SECTIONS
 {
     . = XEN_VIRT_START;
-    _start = .;
-    .text : {
+
+    DECL_SECTION(.text) {
         _stext = .;            /* Text section */
         *(.text.header)
 
@@ -38,7 +52,7 @@ SECTIONS
     } :text
 
     . = ALIGN(PAGE_SIZE);
-    .rodata : {
+    DECL_SECTION(.rodata) {
         _srodata = .;          /* Read-only data */
         *(.rodata)
         *(.rodata.*)
@@ -53,7 +67,7 @@ SECTIONS
 
     #if defined(BUILD_ID)
     . = ALIGN(4);
-    .note.gnu.build-id : {
+    DECL_SECTION(.note.gnu.build-id) {
         __note_gnu_build_id_start = .;
         *(.note.gnu.build-id)
         __note_gnu_build_id_end = .;
@@ -62,19 +76,19 @@ SECTIONS
     _erodata = .;                /* End of read-only data */
 
     . = ALIGN(PAGE_SIZE);
-    .data.ro_after_init : {
+    DECL_SECTION(.data.ro_after_init) {
         __ro_after_init_start = .;
         *(.data.ro_after_init)
         . = ALIGN(PAGE_SIZE);
         __ro_after_init_end = .;
     } : text
 
-    .data.read_mostly : {
+    DECL_SECTION(.data.read_mostly) {
         *(.data.read_mostly)
     } :text
 
     . = ALIGN(PAGE_SIZE);
-    .data : {                    /* Data */
+    DECL_SECTION(.data) {                    /* Data */
         *(.data.page_aligned)
         . = ALIGN(8);
         __start_schedulers_array = .;
@@ -89,14 +103,15 @@ SECTIONS
 
     . = ALIGN(PAGE_SIZE);             /* Init code and data */
     __init_begin = .;
-    .init.text : {
+    DECL_SECTION(.init.text) {
         _sinittext = .;
         *(.init.text)
         _einittext = .;
         . = ALIGN(PAGE_SIZE);        /* Avoid mapping alt insns executable */
     } :text
+
     . = ALIGN(PAGE_SIZE);
-    .init.data : {
+    DECL_SECTION(.init.data) {
         *(.init.rodata)
         *(.init.rodata.*)
 
@@ -125,19 +140,18 @@ SECTIONS
         __ctors_end = .;
     } :text
 
-    .got : {
+    DECL_SECTION(.got) {
         *(.got)
-    } : text
+    } :text
 
-    .got.plt : {
+    DECL_SECTION(.got.plt) {
         *(.got.plt)
-    } : text
+    } :text
 
     . = ALIGN(POINTER_ALIGN);
     __init_end = .;
 
-    .bss : {                     /* BSS */
-        . = ALIGN(POINTER_ALIGN);
+    DECL_SECTION(.bss) {                     /* BSS */
         __bss_start = .;
         *(.bss.stack_aligned)
         *(.bss.page_aligned)
@@ -149,14 +163,14 @@ SECTIONS
         *(.bss.percpu.read_mostly)
         . = ALIGN(SMP_CACHE_BYTES);
         __per_cpu_data_end = .;
-        *(.sbss .sbss.* .bss .bss.*)
+        *(.bss .bss.*)
         . = ALIGN(POINTER_ALIGN);
         __bss_end = .;
     } :text
     _end = . ;
 
     /* Section for the device tree blob (if any). */
-    .dtb : { *(.dtb) } :text
+    DECL_SECTION(.dtb) { *(.dtb) } :text
 
     DWARF2_DEBUG_SECTIONS
 
@@ -172,5 +186,3 @@ ASSERT(IS_ALIGNED(__bss_end,        POINTER_ALIGN), "__bss_end is misaligned")
 
 ASSERT(!SIZEOF(.got),      ".got non-empty")
 ASSERT(!SIZEOF(.got.plt),  ".got.plt non-empty")
-
-ASSERT(_end - _start <= MB(2), "Xen too large for early-boot assumptions")
