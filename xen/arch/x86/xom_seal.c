@@ -1,14 +1,18 @@
 #include <xen/mem_access.h>
 #include <xen/sched.h>
+#include <xen/guest_access.h>
 #include <public/xen.h>
 #include <asm/p2m.h>
+#include <asm/event.h>
+#include <asm/hvm/vmx/vmcs.h>
 #include "mm/mm-locks.h"
 
-int set_xom_seal(struct mmuext_op * op, struct vcpu *curr){
+int set_xom_seal(struct domain* d, gfn_t gfn){
+#ifdef CONFIG_HVM
     int ret;
-    const gfn_t gfn = _gfn(op->arg1.mfn);
-    struct domain* d = curr->domain;
     struct p2m_domain *p2m;
+
+    gdprintk(XENLOG_WARNING, "Entered set_xom_seal, secondary controls are 0x%x, ept used is %d\n", vmx_secondary_exec_control, (vmx_secondary_exec_control & SECONDARY_EXEC_ENABLE_EPT) > 0);
 
     if ( !is_hvm_domain(d) || !hap_enabled(d) || !cpu_has_vmx )
         return -EOPNOTSUPP;
@@ -19,28 +23,31 @@ int set_xom_seal(struct mmuext_op * op, struct vcpu *curr){
         return -EFAULT;
 
     if ( gfn.gfn > p2m->max_mapped_pfn )
-        return -EINVAL;
+        return -EOVERFLOW;
 
     gfn_lock(p2m, gfn, 0);
-
     ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, gfn);
     p2m->tlb_flush(p2m);
-
     gfn_unlock(p2m, gfn, 0);
 
+    gdprintk(XENLOG_WARNING, "Returning from set_xom_seal with ret == %d\n", ret);
+
     return ret;
+#else // CONFIG_HVM
+    return -EOPNOTSUPP;
+#endif // CONFIG_HVM
 }
 
-int clear_xom_seal(struct mmuext_op * op, struct vcpu *curr){
+int clear_xom_seal(struct domain* d, gfn_t gfn){
+#ifdef CONFIG_HVM
     int ret;
-    const gfn_t gfn = _gfn(op->arg1.mfn);
     void* xom_page;
-    struct domain* d = curr->domain;
     struct p2m_domain *p2m;
     struct page_info *page;
     p2m_type_t ptype;
     p2m_access_t atype;
 
+    gdprintk(XENLOG_WARNING, "Entered clear_xom_seal\n");
     if ( !is_hvm_domain(d) || !hap_enabled(d) || !cpu_has_vmx )
         return -EOPNOTSUPP;
 
@@ -52,7 +59,6 @@ int clear_xom_seal(struct mmuext_op * op, struct vcpu *curr){
     if ( gfn.gfn > p2m->max_mapped_pfn )
         return -EINVAL;
 
-    gfn_lock(p2m, gfn, 0);
     page = get_page_from_gfn(d, gfn.gfn, NULL, P2M_ALLOC);
 
     if(!page){
@@ -78,12 +84,59 @@ int clear_xom_seal(struct mmuext_op * op, struct vcpu *curr){
     memset(xom_page, 0x90, PAGE_SIZE);
     unmap_domain_page(xom_page);
 
+    gfn_lock(p2m, gfn, 0);
     ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_rwx, gfn);
     p2m->tlb_flush(p2m);
+    gfn_unlock(p2m, gfn, 0);
 
 exit:
-    gfn_unlock(p2m, gfn, 0);
+    gdprintk(XENLOG_WARNING, "Exit clear_xom_seal with ret == %d\n", ret);
     return ret;
+#else // CONFIG_HVM
+    return -EOPNOTSUPP;
+#endif // CONFIG_HVM
+}
+
+int handle_xom_seal(struct vcpu* curr,
+        XEN_GUEST_HANDLE_PARAM(mmuext_op_t) uops, unsigned int count, XEN_GUEST_HANDLE_PARAM(uint) pdone){
+    int rc = 0;
+    unsigned int i;
+    struct domain* d = curr->domain;
+    struct mmuext_op op;
+
+    if (!is_hvm_domain(d))
+        return -EINVAL;
+
+    for ( i = 0; i < count; i++ ) {
+        if (curr->arch.old_guest_table || (i && hypercall_preempt_check())) {
+            gdprintk(XENLOG_ERR, "Preempt check failed\n");
+            rc = -ERESTART;
+            break;
+        }
+
+        if (unlikely(__copy_from_guest(&op, uops, 1) != 0)) {
+            gdprintk(XENLOG_ERR, "Unable to copy guest page\n");
+            rc = -EFAULT;
+            break;
+        }
+
+        switch (op.cmd){
+            case MMUEXT_MARK_XOM:
+                rc = set_xom_seal(d, _gfn(op.arg1.mfn));
+                break;
+            case MMUEXT_UNMARK_XOM:
+                rc = clear_xom_seal(d, _gfn(op.arg1.mfn));
+                break;
+            default:
+                rc = -EOPNOTSUPP;
+        }
+
+        guest_handle_add_offset(uops, 1);
+    }
+
+    if ( unlikely(!guest_handle_is_null(pdone)) )
+        copy_to_guest(pdone, &i, 1);
+    return rc;
 }
 
 /*

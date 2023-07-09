@@ -1902,6 +1902,15 @@ int hvm_hap_nested_page_fault(paddr_t gpa, unsigned long gla,
 
         if ( violation )
         {
+            // Handle XOM exception -> Cause GP fault
+            if ( p2ma == p2m_access_x )
+            {
+                gprintk(XENLOG_ERR, "Handle XOM access violation on gfn 0x%lx\n", gfn);
+                hvm_inject_hw_exception(X86_EXC_GP, 0);
+                rc = 1;
+                goto out_put_gfn;
+            }
+
             /* Should #VE be emulated for this fault? */
             if ( p2m_is_altp2m(p2m) && !cpu_has_vmx_virt_exceptions )
             {

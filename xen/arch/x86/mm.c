@@ -3461,8 +3461,10 @@ long do_mmuext_op(
 
     if ( !is_pv_domain(pg_owner) )
     {
+        gdprintk(XENLOG_WARNING, "Page owner is not a PV domain\n");
+        rc = handle_xom_seal(curr, uops, count, pdone);
         put_pg_owner(pg_owner);
-        return -EINVAL;
+        return rc;
     }
 
     rc = xsm_mmuext_op(XSM_TARGET, currd, pg_owner);
@@ -3905,12 +3907,12 @@ long do_mmuext_op(
             break;
 
         case MMUEXT_MARK_XOM:
-            rc = set_xom_seal(&op, curr);
+            rc = set_xom_seal(curr->domain, _gfn(op.arg1.mfn));
             break;
 
         case MMUEXT_UNMARK_XOM:
-            rc = clear_xom_seal(&op, curr);
-            break;
+            rc = clear_xom_seal(curr->domain, _gfn(op.arg1.mfn));
+        break;
 
         default:
             rc = -ENOSYS;
