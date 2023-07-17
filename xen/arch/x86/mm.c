@@ -3906,14 +3906,6 @@ long do_mmuext_op(
             rc = -EOPNOTSUPP;
             break;
 
-        case MMUEXT_MARK_XOM:
-            rc = set_xom_seal(curr->domain, _gfn(op.arg1.mfn));
-            break;
-
-        case MMUEXT_UNMARK_XOM:
-            rc = clear_xom_seal(curr->domain, _gfn(op.arg1.mfn));
-        break;
-
         default:
             rc = -ENOSYS;
             break;

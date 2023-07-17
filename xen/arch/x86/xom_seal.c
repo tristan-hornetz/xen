@@ -1,3 +1,5 @@
+#include <generated/autoconf.h>
+#ifdef CONFIG_HVM
 #include <xen/mem_access.h>
 #include <xen/sched.h>
 #include <xen/guest_access.h>
@@ -7,14 +9,14 @@
 #include <asm/hvm/vmx/vmcs.h>
 #include "mm/mm-locks.h"
 
-int set_xom_seal(struct domain* d, gfn_t gfn){
-#ifdef CONFIG_HVM
+
+static int set_xom_seal(struct domain* d, gfn_t gfn){
     int ret;
     struct p2m_domain *p2m;
 
     gdprintk(XENLOG_WARNING, "Entered set_xom_seal, secondary controls are 0x%x, ept used is %d\n", vmx_secondary_exec_control, (vmx_secondary_exec_control & SECONDARY_EXEC_ENABLE_EPT) > 0);
 
-    if ( !is_hvm_domain(d) || !hap_enabled(d) || !cpu_has_vmx )
+    if ( !is_hvm_domain(d) || !hap_enabled(d) )
         return -EOPNOTSUPP;
 
     p2m = p2m_get_hostp2m(d);
@@ -33,13 +35,10 @@ int set_xom_seal(struct domain* d, gfn_t gfn){
     gdprintk(XENLOG_WARNING, "Returning from set_xom_seal with ret == %d\n", ret);
 
     return ret;
-#else // CONFIG_HVM
-    return -EOPNOTSUPP;
-#endif // CONFIG_HVM
 }
 
-int clear_xom_seal(struct domain* d, gfn_t gfn){
-#ifdef CONFIG_HVM
+static int clear_xom_seal(struct domain* d, gfn_t gfn){
+
     int ret;
     void* xom_page;
     struct p2m_domain *p2m;
@@ -48,7 +47,7 @@ int clear_xom_seal(struct domain* d, gfn_t gfn){
     p2m_access_t atype;
 
     gdprintk(XENLOG_WARNING, "Entered clear_xom_seal\n");
-    if ( !is_hvm_domain(d) || !hap_enabled(d) || !cpu_has_vmx )
+    if ( !is_hvm_domain(d) || !hap_enabled(d) )
         return -EOPNOTSUPP;
 
     p2m = p2m_get_hostp2m(d);
@@ -92,9 +91,6 @@ int clear_xom_seal(struct domain* d, gfn_t gfn){
 exit:
     gdprintk(XENLOG_WARNING, "Exit clear_xom_seal with ret == %d\n", ret);
     return ret;
-#else // CONFIG_HVM
-    return -EOPNOTSUPP;
-#endif // CONFIG_HVM
 }
 
 int handle_xom_seal(struct vcpu* curr,
@@ -138,7 +134,7 @@ int handle_xom_seal(struct vcpu* curr,
         copy_to_guest(pdone, &i, 1);
     return rc;
 }
-
+#endif // CONFIG_HVM
 /*
  * Local variables:
  * mode: C
