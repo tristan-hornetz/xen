@@ -141,8 +141,7 @@
         /*
          * This must be the very first address in the loaded image.
          * It should be linked at XEN_VIRT_START, and loaded at any
-         * 4K-aligned address.  All of text+data+bss must fit in 2MB,
-         * or the initial pagetable code below will need adjustment.
+         * 4K-aligned address.
          */
 GLOBAL(start)
         /*
@@ -324,7 +323,7 @@ cpu_init:
         PRINT("- Missing processor info: ")
         print_reg r4
         PRINT(" -\r\n")
-        b     fail
+        b     cpu_init_done
 1:
         /* Jump to cpu_init */
         ldr   r1, [r1, #PROCINFO_cpu_init]  /* r1 := vaddr(init func) */
@@ -373,7 +372,35 @@ ENDPROC(cpu_init)
 .endm
 
 /*
- * Macro to create a page table entry in \ptbl to \tbl
+ * Macro to create a page table entry in \ptbl to \tbl (physical
+ * address)
+ *
+ * ptbl:    table symbol where the entry will be created
+ * tbl:     physical address of the table to point to
+ * virt:    virtual address
+ * lvl:     page-table level
+ *
+ * Preserves \virt
+ * Clobbers \tbl, r1 - r3
+ *
+ * Note that \tbl and \virt should be in a register other than r1 - r3
+ */
+.macro create_table_entry_from_paddr, ptbl, tbl, virt, lvl
+        get_table_slot r1, \virt, \lvl  /* r1 := slot in \tbl */
+        lsl   r1, r1, #3                /* r1 := slot offset in \tbl */
+
+        movw  r2, #PT_PT             /* r2:r3 := right for linear PT */
+        orr   r2, r2, \tbl           /*           + \tbl paddr */
+        mov   r3, #0
+
+        adr_l \tbl, \ptbl            /* \tbl := (v,p)addr of \ptbl */
+
+        strd  r2, r3, [\tbl, r1]
+.endm
+
+
+/*
+ * Macro to create a page table entry in \ptbl to \tbl (symbol)
  *
  * ptbl:    table symbol where the entry will be created
  * tbl:     table symbol to point to
@@ -388,19 +415,9 @@ ENDPROC(cpu_init)
  * Note that \virt should be in a register other than r1 - r4
  */
 .macro create_table_entry, ptbl, tbl, virt, lvl
-        get_table_slot r1, \virt, \lvl  /* r1 := slot in \tlb */
-        lsl   r1, r1, #3                /* r1 := slot offset in \tlb */
-
         load_paddr r4, \tbl
-
-        movw  r2, #PT_PT             /* r2:r3 := right for linear PT */
-        orr   r2, r2, r4             /*           + \tlb paddr */
-        mov   r3, #0
-
-        adr_l r4, \ptbl
-
-        strd  r2, r3, [r4, r1]
-.endm
+        create_table_entry_from_paddr \ptbl, r4, \virt, \lvl
+ .endm
 
 /*
  * Macro to create a mapping entry in \tbl to \paddr. Only mapping in 3rd
@@ -451,16 +468,39 @@ ENDPROC(cpu_init)
  * Output:
  *   r12: Was a temporary mapping created?
  *
- * Clobbers r0 - r4, r6
- *
- * Register usage within this function:
- *   r6 : Identity map in place
+ * Clobbers r0 - r5
  */
 create_page_tables:
         /* Prepare the page-tables for mapping Xen */
         mov_w r0, XEN_VIRT_START
         create_table_entry boot_pgtable, boot_second, r0, 1
-        create_table_entry boot_second, boot_third, r0, 2
+
+        /*
+         * We need to use a stash register because
+         * create_table_entry_paddr() will clobber the register storing
+         * the physical address of the table to point to.
+         */
+        load_paddr r5, boot_third
+        mov_w r4, XEN_VIRT_START
+.rept XEN_NR_ENTRIES(2)
+        mov   r0, r5                        /* r0 := paddr(l3 table) */
+        create_table_entry_from_paddr boot_second, r0, r4, 2
+        add   r4, r4, #XEN_PT_LEVEL_SIZE(2) /* r4 := Next vaddr */
+        add   r5, r5, #PAGE_SIZE            /* r5 := Next table */
+.endr
+
+        /*
+         * Find the size of Xen in pages and multiply by the size of a
+         * PTE. This will then be compared in the mapping loop below.
+         *
+         * Note the multiplication is just to avoid using an extra
+         * register/instruction per iteration.
+         */
+        mov_w r0, _start            /* r0 := vaddr(_start) */
+        mov_w r1, _end              /* r1 := vaddr(_end) */
+        sub   r0, r1, r0            /* r0 := effective size of Xen */
+        lsr   r0, r0, #PAGE_SHIFT   /* r0 := Number of pages for Xen */
+        lsl   r0, r0, #3            /* r0 := Number of pages * PTE size */
 
         /* Setup boot_third: */
         adr_l r4, boot_third
@@ -476,7 +516,7 @@ create_page_tables:
 1:      strd  r2, r3, [r4, r1]       /* Map vaddr(start) */
         add   r2, r2, #PAGE_SIZE     /* Next page */
         add   r1, r1, #8             /* Next slot */
-        cmp   r1, #(XEN_PT_LPAE_ENTRIES<<3) /* 512*8-byte entries per page */
+        cmp   r1, r0                 /* Loop until we map all of Xen */
         blo   1b
 
         /*
@@ -656,6 +696,11 @@ switch_to_runtime_mapping:
 
         /* Ensure any page table updates are visible before continuing */
         dsb   nsh
+        /*
+         * The function will return on the runtime mapping. So we want
+         * to prevent instruction fetch before the dsb completes.
+         */
+        isb
 
 ready_to_switch:
         mov   pc, lr
@@ -751,6 +796,11 @@ setup_fixmap:
         create_table_entry boot_second, xen_fixmap, r0, 2
         /* Ensure any page table updates made above have occurred. */
         dsb   nshst
+        /*
+         * The fixmap area will be used soon after. So ensure no hardware
+         * translation happens before the dsb completes.
+         */
+        isb
 
         mov   pc, lr
 ENDPROC(setup_fixmap)

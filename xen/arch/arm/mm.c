@@ -53,8 +53,8 @@ mm_printk(const char *fmt, ...) {}
  * to the CPUs own pagetables.
  *
  * These pagetables have a very simple structure. They include:
- *  - 2MB worth of 4K mappings of xen at XEN_VIRT_START, boot_first and
- *    boot_second are used to populate the tables down to boot_third
+ *  - XEN_VIRT_SIZE worth of L3 mappings of xen at XEN_VIRT_START, boot_first
+ *    and boot_second are used to populate the tables down to boot_third
  *    which contains the actual mapping.
  *  - a 1:1 mapping of xen at its current physical address. This uses a
  *    section mapping at whichever of boot_{pgtable,first,second}
@@ -79,7 +79,7 @@ DEFINE_BOOT_PAGE_TABLE(boot_first_id);
 DEFINE_BOOT_PAGE_TABLE(boot_second_id);
 DEFINE_BOOT_PAGE_TABLE(boot_third_id);
 DEFINE_BOOT_PAGE_TABLE(boot_second);
-DEFINE_BOOT_PAGE_TABLE(boot_third);
+DEFINE_BOOT_PAGE_TABLES(boot_third, XEN_NR_ENTRIES(2));
 
 /* Main runtime page tables */
 
@@ -115,7 +115,7 @@ DEFINE_BOOT_PAGE_TABLE(xen_fixmap);
  * Third level page table used to map Xen itself with the XN bit set
  * as appropriate.
  */
-static DEFINE_PAGE_TABLE(xen_xenmap);
+static DEFINE_PAGE_TABLES(xen_xenmap, XEN_NR_ENTRIES(2));
 
 /* Non-boot CPUs use this to find the correct pagetables. */
 uint64_t init_ttbr;
@@ -518,15 +518,15 @@ void __init setup_pagetables(unsigned long boot_phys_offset)
     p[0].pt.table = 1;
     p[0].pt.xn = 0;
 
-    /* Break up the Xen mapping into 4k pages and protect them separately. */
-    for ( i = 0; i < XEN_PT_LPAE_ENTRIES; i++ )
+    /* Break up the Xen mapping into pages and protect them separately. */
+    for ( i = 0; i < XEN_NR_ENTRIES(3); i++ )
     {
         vaddr_t va = XEN_VIRT_START + (i << PAGE_SHIFT);
 
         if ( !is_kernel(va) )
             break;
         pte = pte_of_xenaddr(va);
-        pte.pt.table = 1; /* 4k mappings always have this bit set */
+        pte.pt.table = 1; /* third level mappings always have this bit set */
         if ( is_kernel_text(va) || is_kernel_inittext(va) )
         {
             pte.pt.xn = 0;
@@ -539,10 +539,14 @@ void __init setup_pagetables(unsigned long boot_phys_offset)
 
     /* Initialise xen second level entries ... */
     /* ... Xen's text etc */
+    for ( i = 0; i < XEN_NR_ENTRIES(2); i++ )
+    {
+        vaddr_t va = XEN_VIRT_START + (i << XEN_PT_LEVEL_SHIFT(2));
 
-    pte = pte_of_xenaddr((vaddr_t)xen_xenmap);
-    pte.pt.table = 1;
-    xen_second[second_table_offset(XEN_VIRT_START)] = pte;
+        pte = pte_of_xenaddr((vaddr_t)(xen_xenmap + i * XEN_PT_LPAE_ENTRIES));
+        pte.pt.table = 1;
+        xen_second[second_table_offset(va)] = pte;
+    }
 
     /* ... Fixmap */
     pte = pte_of_xenaddr((vaddr_t)xen_fixmap);
@@ -736,10 +740,10 @@ void *__init arch_vmap_virt_end(void)
  * This function should only be used to remap device address ranges
  * TODO: add a check to verify this assumption
  */
-void *ioremap_attr(paddr_t pa, size_t len, unsigned int attributes)
+void *ioremap_attr(paddr_t start, size_t len, unsigned int attributes)
 {
-    mfn_t mfn = _mfn(PFN_DOWN(pa));
-    unsigned int offs = pa & (PAGE_SIZE - 1);
+    mfn_t mfn = _mfn(PFN_DOWN(start));
+    unsigned int offs = start & (PAGE_SIZE - 1);
     unsigned int nr = PFN_UP(offs + len);
     void *ptr = __vmap(&mfn, nr, 1, 1, attributes, VMAP_DEFAULT);
 
@@ -779,6 +783,11 @@ static int create_xen_table(lpae_t *entry)
     pte = mfn_to_xen_entry(mfn, MT_NORMAL);
     pte.pt.table = 1;
     write_pte(entry, pte);
+    /*
+     * No ISB here. It is deferred to xen_pt_update() as the new table
+     * will not be used for hardware translation table access as part of
+     * the mapping update.
+     */
 
     return 0;
 }
@@ -1017,6 +1026,10 @@ static int xen_pt_update_entry(mfn_t root, unsigned long virt,
     }
 
     write_pte(entry, pte);
+    /*
+     * No ISB or TLB flush here. They are deferred to xen_pt_update()
+     * as the entry will not be used as part of the mapping update.
+     */
 
     rc = 0;
 
@@ -1196,6 +1209,9 @@ static int xen_pt_update(unsigned long virt,
     /*
      * The TLBs flush can be safely skipped when a mapping is inserted
      * as we don't allow mapping replacement (see xen_pt_check_entry()).
+     * Although we still need an ISB to ensure any DSB in
+     * write_pte() will complete because the mapping may be used soon
+     * after.
      *
      * For all the other cases, the TLBs will be flushed unconditionally
      * even if the mapping has failed. This is because we may have
@@ -1204,6 +1220,8 @@ static int xen_pt_update(unsigned long virt,
      */
     if ( !((flags & _PAGE_PRESENT) && !mfn_eq(mfn, INVALID_MFN)) )
         flush_xen_tlb_range_va(virt, PAGE_SIZE * nr_mfns);
+    else
+        isb();
 
     spin_unlock(&xen_pt_lock);
 
@@ -1218,7 +1236,7 @@ int map_pages_to_xen(unsigned long virt,
     return xen_pt_update(virt, mfn, nr_mfns, flags);
 }
 
-int populate_pt_range(unsigned long virt, unsigned long nr_mfns)
+int __init populate_pt_range(unsigned long virt, unsigned long nr_mfns)
 {
     return xen_pt_update(virt, INVALID_MFN, nr_mfns, _PAGE_POPULATE);
 }
@@ -1579,7 +1597,7 @@ void put_page_type(struct page_info *page)
     return;
 }
 
-int create_grant_host_mapping(unsigned long addr, mfn_t frame,
+int create_grant_host_mapping(uint64_t gpaddr, mfn_t frame,
                               unsigned int flags, unsigned int cache_flags)
 {
     int rc;
@@ -1591,7 +1609,7 @@ int create_grant_host_mapping(unsigned long addr, mfn_t frame,
     if ( flags & GNTMAP_readonly )
         t = p2m_grant_map_ro;
 
-    rc = guest_physmap_add_entry(current->domain, gaddr_to_gfn(addr),
+    rc = guest_physmap_add_entry(current->domain, gaddr_to_gfn(gpaddr),
                                  frame, 0, t);
 
     if ( rc )
@@ -1600,17 +1618,17 @@ int create_grant_host_mapping(unsigned long addr, mfn_t frame,
         return GNTST_okay;
 }
 
-int replace_grant_host_mapping(unsigned long addr, mfn_t mfn,
-                               unsigned long new_addr, unsigned int flags)
+int replace_grant_host_mapping(uint64_t gpaddr, mfn_t frame,
+                               uint64_t new_gpaddr, unsigned int flags)
 {
-    gfn_t gfn = gaddr_to_gfn(addr);
+    gfn_t gfn = gaddr_to_gfn(gpaddr);
     struct domain *d = current->domain;
     int rc;
 
-    if ( new_addr != 0 || (flags & GNTMAP_contains_pte) )
+    if ( new_gpaddr != 0 || (flags & GNTMAP_contains_pte) )
         return GNTST_general_error;
 
-    rc = guest_physmap_remove_page(d, gfn, mfn, 0);
+    rc = guest_physmap_remove_page(d, gfn, frame, 0);
 
     return rc ? GNTST_general_error : GNTST_okay;
 }

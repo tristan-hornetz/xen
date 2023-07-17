@@ -2,21 +2,15 @@
 #define __TYPES_H__
 
 #include <xen/stdbool.h>
+#include <xen/stdint.h>
 
 #include <asm/types.h>
 
-#if defined(__SIZE_TYPE__)
 typedef __SIZE_TYPE__ size_t;
-#else
-typedef unsigned long size_t;
-#endif
+
 typedef signed long ssize_t;
 
-#if defined(__PTRDIFF_TYPE__)
 typedef __PTRDIFF_TYPE__ ptrdiff_t;
-#else
-typedef signed long ptrdiff_t;
-#endif
 
 #define BITS_TO_LONGS(bits) \
     (((bits)+BITS_PER_LONG-1)/BITS_PER_LONG)
@@ -46,17 +40,14 @@ typedef signed long ptrdiff_t;
 #define LONG_MIN        (-LONG_MAX - 1)
 #define ULONG_MAX       (~0UL)
 
-typedef         __u8            uint8_t;
-typedef         __s8            int8_t;
-
-typedef         __u16           uint16_t;
-typedef         __s16           int16_t;
-
-typedef         __u32           uint32_t;
-typedef         __s32           int32_t;
-
-typedef         __u64           uint64_t;
-typedef         __s64           int64_t;
+typedef uint8_t         __u8;
+typedef int8_t          __s8;
+typedef uint16_t        __u16;
+typedef int16_t         __s16;
+typedef uint32_t        __u32;
+typedef int32_t         __s32;
+typedef uint64_t        __u64;
+typedef int64_t         __s64;
 
 typedef __u16 __le16;
 typedef __u16 __be16;

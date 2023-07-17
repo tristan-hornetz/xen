@@ -7,7 +7,6 @@ config ARM_64
 	def_bool y
 	depends on !ARM_32
 	select 64BIT
-	select ARM_EFI
 	select HAS_FAST_MULTIPLY
 
 config ARM
@@ -17,6 +16,7 @@ config ARM
 	select HAS_PASSTHROUGH
 	select HAS_PDX
 	select HAS_PMAP
+	select HAS_UBSAN
 	select IOMMU_FORCE_PT_SHARE
 
 config ARCH_DEFCONFIG
@@ -63,14 +63,20 @@ source "arch/Kconfig"
 
 config ACPI
 	bool "ACPI (Advanced Configuration and Power Interface) Support (UNSUPPORTED)" if UNSUPPORTED
-	depends on ARM_64
+	depends on ARM_64 && ARM_EFI
 	---help---
 
 	  Advanced Configuration and Power Interface (ACPI) support for Xen is
-	  an alternative to device tree on ARM64.
+	  an alternative to device tree on ARM64. This requires UEFI.
 
 config ARM_EFI
-	bool
+	bool "UEFI boot service support"
+	depends on ARM_64
+	default y
+	help
+	  This option provides support for boot services through
+	  UEFI firmware. A UEFI stub is provided to allow Xen to
+	  be booted as an EFI application.
 
 config GICV3
 	bool "GICv3 driver"

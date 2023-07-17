@@ -1401,17 +1401,18 @@ static void cf_check spurious_interrupt(struct cpu_user_regs *regs)
 static void cf_check error_interrupt(struct cpu_user_regs *regs)
 {
     static const char *const esr_fields[] = {
-        "Send CS error",
-        "Receive CS error",
-        "Send accept error",
-        "Receive accept error",
-        "Redirectable IPI",
-        "Send illegal vector",
-        "Received illegal vector",
-        "Illegal register address",
+        ", Send CS error",
+        ", Receive CS error",
+        ", Send accept error",
+        ", Receive accept error",
+        ", Redirectable IPI",
+        ", Send illegal vector",
+        ", Received illegal vector",
+        ", Illegal register address",
     };
+    const char *entries[ARRAY_SIZE(esr_fields)];
     unsigned int v, v1;
-    int i;
+    unsigned int i;
 
     /* First tickle the hardware, only then report what went on. -- REW */
     v = apic_read(APIC_ESR);
@@ -1419,12 +1420,13 @@ static void cf_check error_interrupt(struct cpu_user_regs *regs)
     v1 = apic_read(APIC_ESR);
     ack_APIC_irq();
 
-    printk(XENLOG_DEBUG "APIC error on CPU%u: %02x(%02x)",
-            smp_processor_id(), v , v1);
-    for ( i = 7; i >= 0; --i )
-        if ( v1 & (1 << i) )
-            printk(", %s", esr_fields[i]);
-    printk("\n");
+    for ( i = 0; i < ARRAY_SIZE(entries); ++i )
+        entries[i] = v1 & (1 << i) ? esr_fields[i] : "";
+    printk(XENLOG_DEBUG
+           "APIC error on CPU%u: %02x(%02x)%s%s%s%s%s%s%s%s\n",
+           smp_processor_id(), v, v1,
+           entries[7], entries[6], entries[5], entries[4],
+           entries[3], entries[2], entries[1], entries[0]);
 }
 
 /*

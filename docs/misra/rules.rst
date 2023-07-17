@@ -17,13 +17,8 @@ hypervisor.
 It is possible that in specific circumstances it is best not to follow a
 rule because it is not possible or because the alternative leads to
 better code quality. Those cases are called "deviations". They are
-permissible as long as they are documented as an in-code comment using
-the following format::
-
-    /*
-     * MISRA_DEV: Rule ID
-     * Justification text.
-     */
+permissible as long as they are documented. For details, please refer to
+docs/misra/documenting-violations.rst
 
 Other documentation mechanisms are work-in-progress.
 
@@ -208,9 +203,29 @@ maintainers if you want to suggest a change.
      - The lowercase character l shall not be used in a literal suffix
      -
 
+   * - `Rule 7.4 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_07_04.c>`_
+     - Required
+     - A string literal shall not be assigned to an object unless the
+       object type is pointer to const-qualified char
+     - All "character types" are permitted, as long as the string
+       element type and the character type match. (There should be no
+       casts.) Assigning a string literal to any object with type
+       "pointer to const-qualified void" is allowed.
+
    * - `Rule 8.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_01.c>`_
      - Required
      - Types shall be explicitly specified
+     -
+
+   * - `Rule 8.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_02.c>`_
+     - Required
+     - Function types shall be in prototype form with named parameters
+     -
+
+   * - `Rule 8.3 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_03.c>`_
+     - Required
+     - All declarations of an object or function shall use the same
+       names and type qualifiers
      -
 
    * - `Rule 8.4 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_04.c>`_
@@ -248,6 +263,11 @@ maintainers if you want to suggest a change.
        enumeration constant shall be unique
      -
 
+   * - `Rule 8.14 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_14.c>`_
+     - Required
+     - The restrict type qualifier shall not be used
+     -
+
    * - `Rule 9.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_09_01.c>`_
      - Mandatory
      - The value of an object with automatic storage duration shall not
@@ -262,6 +282,16 @@ maintainers if you want to suggest a change.
      - Required
      - The initializer for an aggregate or union shall be enclosed in
        braces
+     -
+
+   * - `Rule 9.3 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_09_03.c>`_
+     - Required
+     - Arrays shall not be partially initialized
+     - {} is also allowed to specify explicit zero-initialization
+
+   * - `Rule 9.4 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_09_04.c>`_
+     - Required
+     - An element of an object shall not be initialized more than once
      -
 
    * - `Rule 12.5 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_12_05.c>`_

@@ -911,7 +911,7 @@ static PyObject *pyxc_physinfo(XcObject *self)
                            "hw_caps",          cpu_cap,
                            "virt_caps",        virt_caps);
 
-#if defined(__aarch64__)
+#if defined(__arm__) || defined(__aarch64__)
     if ( objret ) {
         unsigned int sve_vl_bits;
         PyObject *py_arm_sve_vl;
@@ -919,11 +919,16 @@ static PyObject *pyxc_physinfo(XcObject *self)
         sve_vl_bits = arch_capabilities_arm_sve(pinfo.arch_capabilities);
         py_arm_sve_vl = PyLong_FromUnsignedLong(sve_vl_bits);
 
-        if ( !py_arm_sve_vl )
+        if ( !py_arm_sve_vl ) {
+            Py_DECREF(objret);
             return NULL;
+        }
 
-        if( PyDict_SetItemString(objret, "arm_sve_vl", py_arm_sve_vl) )
+        if( PyDict_SetItemString(objret, "arm_sve_vl", py_arm_sve_vl) ) {
+            Py_DECREF(py_arm_sve_vl);
+            Py_DECREF(objret);
             return NULL;
+        }
     }
 #endif
 

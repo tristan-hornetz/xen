@@ -123,6 +123,7 @@ multiboot2_header:
 .Lbad_ldr_nih: .asciz "ERR: EFI ImageHandle is not provided by bootloader!"
 .Lbad_efi_msg: .asciz "ERR: EFI IA-32 platforms are not supported!"
 .Lbag_alg_msg: .asciz "ERR: Xen must be loaded at a 2Mb boundary!"
+.Lno_nx_msg:   .asciz "ERR: Not an NX-capable CPU!"
 
         .section .init.data, "aw", @progbits
         .align 4
@@ -153,6 +154,11 @@ early_error: /* Here to improve the disassembly. */
 .Lnot_aligned:
         add     $sym_offs(.Lbag_alg_msg), %esi
         jmp     .Lget_vtb
+#ifdef CONFIG_REQUIRE_NX
+.Lno_nx:
+        add     $sym_offs(.Lno_nx_msg), %esi
+        jmp     .Lget_vtb
+#endif
 .Lmb2_no_st:
         /*
          * Here we are on EFI platform. vga_text_buffer was zapped earlier
@@ -231,9 +237,10 @@ __efi64_mb2_start:
         jmp     x86_32_switch
 
 .Lefi_multiboot2_proto:
-        /* Zero EFI SystemTable and EFI ImageHandle addresses. */
+        /* Zero EFI SystemTable, EFI ImageHandle addresses and cmdline. */
         xor     %esi,%esi
         xor     %edi,%edi
+        xor     %edx,%edx
 
         /* Skip Multiboot2 information fixed part. */
         lea     (MB2_fixed_sizeof+MULTIBOOT2_TAG_ALIGN-1)(%rbx),%ecx
@@ -270,6 +277,13 @@ __efi64_mb2_start:
         cmpl    $MULTIBOOT2_TAG_TYPE_EFI64_IH,MB2_tag_type(%rcx)
         cmove   MB2_efi64_ih(%rcx),%rdi
         je      .Lefi_mb2_next_tag
+
+        /* Get command line from Multiboot2 information. */
+        cmpl    $MULTIBOOT2_TAG_TYPE_CMDLINE, MB2_tag_type(%rcx)
+        jne     .Lno_cmdline
+        lea     MB2_tag_string(%rcx), %rdx
+        jmp     .Lefi_mb2_next_tag
+.Lno_cmdline:
 
         /* Is it the end of Multiboot2 information? */
         cmpl    $MULTIBOOT2_TAG_TYPE_END,MB2_tag_type(%rcx)
@@ -334,7 +348,8 @@ __efi64_mb2_start:
 
         /*
          * efi_multiboot2() is called according to System V AMD64 ABI:
-         *   - IN:  %rdi - EFI ImageHandle, %rsi - EFI SystemTable.
+         *   - IN:  %rdi - EFI ImageHandle, %rsi - EFI SystemTable,
+         *          %rdx - MB2 cmdline
          */
         call    efi_multiboot2
 
@@ -652,15 +667,59 @@ trampoline_setup:
         cpuid
 1:      mov     %edx, CPUINFO_FEATURE_OFFSET(X86_FEATURE_LM) + sym_esi(boot_cpu_data)
 
-        /* Check for NX. Adjust EFER setting if available. */
-        bt      $cpufeat_bit(X86_FEATURE_NX), %edx
-        jnc     1f
-        orb     $EFER_NXE >> 8, 1 + sym_esi(trampoline_efer)
-1:
-
         /* Check for availability of long mode. */
         bt      $cpufeat_bit(X86_FEATURE_LM),%edx
         jnc     .Lbad_cpu
+
+        /*
+         * Check for NX
+         *   - If Xen was compiled requiring it simply assert it's
+         *     supported. The trampoline already has the right constant.
+         *   - Otherwise, update the trampoline EFER mask accordingly.
+         */
+        bt      $cpufeat_bit(X86_FEATURE_NX), %edx
+        jc     .Lgot_nx
+
+        /*
+         * NX appears to be unsupported, but it might be hidden.
+         *
+         * The feature is part of the AMD64 spec, but the very first Intel
+         * 64bit CPUs lacked the feature, and thereafter there was a
+         * firmware knob to disable the feature. Undo the disable if
+         * possible.
+         *
+         * All 64bit Intel CPUs support this MSR. If virtualised, expect
+         * the hypervisor to either emulate the MSR or give us NX.
+         */
+        xor     %eax, %eax
+        cpuid
+        cmp     $X86_VENDOR_INTEL_EBX, %ebx
+        jnz     .Lno_nx
+        cmp     $X86_VENDOR_INTEL_EDX, %edx
+        jnz     .Lno_nx
+        cmp     $X86_VENDOR_INTEL_ECX, %ecx
+        jnz     .Lno_nx
+
+        /* Clear the XD_DISABLE bit */
+        mov     $MSR_IA32_MISC_ENABLE, %ecx
+        rdmsr
+        btr     $2, %edx
+        jnc     .Lno_nx
+        wrmsr
+        orb     $MSR_IA32_MISC_ENABLE_XD_DISABLE >> 32, 4 + sym_esi(trampoline_misc_enable_off)
+
+        /* Check again for NX */
+        mov     $0x80000001, %eax
+        cpuid
+        bt      $cpufeat_bit(X86_FEATURE_NX), %edx
+        jnc     .Lno_nx
+
+.Lgot_nx:
+#ifndef CONFIG_REQUIRE_NX
+        /* Adjust EFER given that NX is present */
+        orb     $EFER_NXE >> 8, 1 + sym_esi(trampoline_efer)
+.Lno_nx:
+#endif
 
         /* Stash TSC to calculate a good approximation of time-since-boot */
         rdtsc

@@ -34,8 +34,8 @@
 #include <stdint.h>
 #include <errno.h>
 #include <xen-tools/common-macros.h>
+#include <xen-tools/xenstore-common.h>
 #include "xenstore.h"
-#include "xs_lib.h"
 
 #include <xentoolcore_internal.h>
 #include <xen_list.h>
@@ -311,6 +311,26 @@ struct xs_handle *xs_domain_open(void)
 	return xs_open(0);
 }
 
+static const char *xs_domain_dev(void)
+{
+	char *s = getenv("XENSTORED_PATH");
+	if (s)
+		return s;
+#if defined(__RUMPUSER_XEN__) || defined(__RUMPRUN__)
+	return "/dev/xen/xenbus";
+#elif defined(__linux__)
+	if (access("/dev/xen/xenbus", F_OK) == 0)
+		return "/dev/xen/xenbus";
+	return "/proc/xen/xenbus";
+#elif defined(__NetBSD__)
+	return "/kern/xen/xenbus";
+#elif defined(__FreeBSD__)
+	return "/dev/xen/xenstore";
+#else
+	return "/dev/xen/xenbus";
+#endif
+}
+
 struct xs_handle *xs_open(unsigned long flags)
 {
 	struct xs_handle *xsh = NULL;
@@ -431,6 +451,24 @@ out_false:
 #ifdef XSTEST
 #define read_all read_all_choice
 #define xs_write_all write_all_choice
+#else
+/* Simple routine for writing to sockets, etc. */
+bool xs_write_all(int fd, const void *data, unsigned int len)
+{
+	while (len) {
+		int done;
+
+		done = write(fd, data, len);
+		if (done < 0 && errno == EINTR)
+			continue;
+		if (done <= 0)
+			return false;
+		data += done;
+		len -= done;
+	}
+
+	return true;
+}
 #endif
 
 static int get_error(const char *errorstring)
@@ -589,7 +627,7 @@ static char **xs_directory_common(char *strings, unsigned int len,
 	char *p, **ret;
 
 	/* Count the strings. */
-	*num = xs_count_strings(strings, len);
+	*num = xenstore_count_strings(strings, len);
 
 	/* Transfer to one big alloc for easy freeing. */
 	ret = malloc(*num * sizeof(char *) + len);
@@ -737,7 +775,7 @@ struct xs_permissions *xs_get_permissions(struct xs_handle *h,
 		return NULL;
 
 	/* Count the strings: each one perms then domid. */
-	*num = xs_count_strings(strings, len);
+	*num = xenstore_count_strings(strings, len);
 
 	/* Transfer to one big alloc for easy freeing. */
 	ret = malloc(*num * sizeof(struct xs_permissions));
@@ -746,7 +784,7 @@ struct xs_permissions *xs_get_permissions(struct xs_handle *h,
 		return NULL;
 	}
 
-	if (!xs_strings_to_perms(ret, *num, strings)) {
+	if (!xenstore_strings_to_perms(ret, *num, strings)) {
 		free_no_errno(ret);
 		ret = NULL;
 	}
@@ -773,7 +811,7 @@ bool xs_set_permissions(struct xs_handle *h,
 	for (i = 0; i < num_perms; i++) {
 		char buffer[MAX_STRLEN(unsigned int)+1];
 
-		if (!xs_perm_to_string(&perms[i], buffer, sizeof(buffer)))
+		if (!xenstore_perm_to_string(&perms[i], buffer, sizeof(buffer)))
 			goto unwind;
 
 		iov[i+1].iov_base = strdup(buffer);
@@ -939,7 +977,7 @@ static char **read_watch_internal(struct xs_handle *h, unsigned int *num,
 	assert(msg->hdr.type == XS_WATCH_EVENT);
 
 	strings     = msg->body;
-	num_strings = xs_count_strings(strings, msg->hdr.len);
+	num_strings = xenstore_count_strings(strings, msg->hdr.len);
 
 	ret = malloc(sizeof(char*) * num_strings + msg->hdr.len);
 	if (!ret) {
@@ -1326,6 +1364,27 @@ error:
 	errno = saved_errno;
 
 	return ret;
+}
+
+const char *xs_daemon_socket(void)
+{
+	return xenstore_daemon_path();
+}
+
+const char *xs_daemon_socket_ro(void)
+{
+	return xs_daemon_socket();
+}
+
+const char *xs_daemon_rundir(void)
+{
+	return xenstore_daemon_rundir();
+}
+
+bool xs_strings_to_perms(struct xs_permissions *perms, unsigned int num,
+			 const char *strings)
+{
+	return xenstore_strings_to_perms(perms, num, strings);
 }
 
 #ifdef USE_PTHREAD

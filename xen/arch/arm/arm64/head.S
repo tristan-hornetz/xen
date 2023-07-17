@@ -22,8 +22,11 @@
 
 #include <asm/page.h>
 #include <asm/early_printk.h>
+
+#ifdef CONFIG_ARM_EFI
 #include <efi/efierr.h>
 #include <asm/arm64/efibind.h>
+#endif
 
 #define PT_PT     0xf7f /* nG=1 AF=1 SH=11 AP=01 NS=1 ATTR=111 T=1 P=1 */
 #define PT_MEM    0xf7d /* nG=1 AF=1 SH=11 AP=01 NS=1 ATTR=111 T=0 P=1 */
@@ -90,7 +93,7 @@
  */
 #define PRINT(_s)          \
         mov   x3, lr ;     \
-        adr   x0, 98f ;    \
+        adr_l x0, 98f ;    \
         bl    puts    ;    \
         mov   lr, x3 ;     \
         RODATA_STR(98, _s)
@@ -146,8 +149,7 @@
          *
          * This must be the very first address in the loaded image.
          * It should be linked at XEN_VIRT_START, and loaded at any
-         * 4K-aligned address.  All of text+data+bss must fit in 2MB,
-         * or the initial pagetable code below will need adjustment.
+         * 4K-aligned address.
          */
 
 GLOBAL(start)
@@ -172,8 +174,10 @@ efi_head:
         .byte   0x52
         .byte   0x4d
         .byte   0x64
-        .long   pe_header - efi_head        /* Offset to the PE header. */
-
+#ifndef CONFIG_ARM_EFI
+        .long   0                    /* 0 means no PE header. */
+#else
+        .long   pe_header - efi_head /* Offset to the PE header. */
         /*
          * Add the PE/COFF header to the file.  The address of this header
          * is at offset 0x3c in the file, and is part of Linux "Image"
@@ -279,6 +283,8 @@ section_table:
         .short  0                /* NumberOfLineNumbers  (0 for executables) */
         .long   0xe0500020       /* Characteristics (section flags) */
         .align  5
+#endif /* CONFIG_ARM_EFI */
+
 real_start:
         /* BSS should be zeroed when booting without EFI */
         mov   x26, #0                /* x26 := skip_zero_bss */
@@ -492,6 +498,31 @@ ENDPROC(cpu_init)
 
 /*
  * Macro to create a page table entry in \ptbl to \tbl
+ * ptbl:    table symbol where the entry will be created
+ * tbl:     physical address of the table to point to
+ * virt:    virtual address
+ * lvl:     page-table level
+ * tmp1:    scratch register
+ * tmp2:    scratch register
+ *
+ * Preserves \virt
+ * Clobbers \tbl, \tmp1, \tmp2
+ *
+ * Note that all parameters using registers should be distinct.
+ */
+.macro create_table_entry_from_paddr, ptbl, tbl, virt, lvl, tmp1, tmp2
+        get_table_slot \tmp1, \virt, \lvl   /* \tmp1 := slot in \tbl */
+
+        mov   \tmp2, #PT_PT                 /* \tmp2 := right for linear PT */
+        orr   \tmp2, \tmp2, \tbl            /*          + \tbl */
+
+        adr_l \tbl, \ptbl                   /* \tbl := address(\ptbl) */
+
+        str   \tmp2, [\tbl, \tmp1, lsl #3]
+.endm
+
+/*
+ * Macro to create a page table entry in \ptbl to \tbl
  *
  * ptbl:    table symbol where the entry will be created
  * tbl:     table symbol to point to
@@ -509,15 +540,8 @@ ENDPROC(cpu_init)
  * Note that all parameters using registers should be distinct.
  */
 .macro create_table_entry, ptbl, tbl, virt, lvl, tmp1, tmp2, tmp3
-        get_table_slot \tmp1, \virt, \lvl   /* \tmp1 := slot in \tlb */
-
-        load_paddr \tmp2, \tbl
-        mov   \tmp3, #PT_PT                 /* \tmp3 := right for linear PT */
-        orr   \tmp3, \tmp3, \tmp2           /*          + \tlb paddr */
-
-        adr_l \tmp2, \ptbl
-
-        str   \tmp3, [\tmp2, \tmp1, lsl #3]
+        load_paddr \tmp1, \tbl
+        create_table_entry_from_paddr \ptbl, \tmp1, \virt, \lvl, \tmp2, \tmp3
 .endm
 
 /*
@@ -570,7 +594,33 @@ create_page_tables:
         ldr   x0, =XEN_VIRT_START
         create_table_entry boot_pgtable, boot_first, x0, 0, x1, x2, x3
         create_table_entry boot_first, boot_second, x0, 1, x1, x2, x3
-        create_table_entry boot_second, boot_third, x0, 2, x1, x2, x3
+
+        /*
+         * We need to use a stash register because
+         * create_table_entry_paddr() will clobber the register storing
+         * the physical address of the table to point to.
+         */
+        load_paddr x4, boot_third
+        ldr   x1, =XEN_VIRT_START
+.rept XEN_NR_ENTRIES(2)
+        mov   x0, x4                            /* x0 := paddr(l3 table) */
+        create_table_entry_from_paddr boot_second, x0, x1, 2, x2, x3
+        add   x1, x1, #XEN_PT_LEVEL_SIZE(2)     /* x1 := Next vaddr */
+        add   x4, x4, #PAGE_SIZE                /* x4 := Next table */
+.endr
+
+        /*
+         * Find the size of Xen in pages and multiply by the size of a
+         * PTE. This will then be compared in the mapping loop below.
+         *
+         * Note the multiplication is just to avoid using an extra
+         * register/instruction per iteration.
+         */
+        ldr   x0, =_start            /* x0 := vaddr(_start) */
+        ldr   x1, =_end              /* x1 := vaddr(_end) */
+        sub   x0, x1, x0             /* x0 := effective size of Xen */
+        lsr   x0, x0, #PAGE_SHIFT    /* x0 := Number of pages for Xen */
+        lsl   x0, x0, #3             /* x0 := Number of pages * PTE size */
 
         /* Map Xen */
         adr_l x4, boot_third
@@ -585,7 +635,7 @@ create_page_tables:
 1:      str   x2, [x4, x1]           /* Map vaddr(start) */
         add   x2, x2, #PAGE_SIZE     /* Next page */
         add   x1, x1, #8             /* Next slot */
-        cmp   x1, #(XEN_PT_LPAE_ENTRIES<<3) /* 512 entries per page */
+        cmp   x1, x0                 /* Loop until we map all of Xen */
         b.lt  1b
 
         /*
@@ -769,6 +819,11 @@ setup_fixmap:
         create_table_entry boot_second, xen_fixmap, x0, 2, x1, x2, x3
         /* Ensure any page table updates made above have occurred. */
         dsb   nshst
+        /*
+         * The fixmap area will be used soon after. So ensure no hardware
+         * translation happens before the dsb completes.
+         */
+        isb
 
         ret
 ENDPROC(setup_fixmap)
@@ -917,6 +972,8 @@ putn:   ret
 ENTRY(lookup_processor_type)
         mov  x0, #0
         ret
+
+#ifdef CONFIG_ARM_EFI
 /*
  *  Function to transition from EFI loader in C, to Xen entry point.
  *  void noreturn efi_xen_start(void *fdt_ptr, uint32_t fdt_size);
@@ -974,6 +1031,8 @@ ENTRY(efi_xen_start)
 
         b     real_start_efi
 ENDPROC(efi_xen_start)
+
+#endif /* CONFIG_ARM_EFI */
 
 /*
  * Local variables:

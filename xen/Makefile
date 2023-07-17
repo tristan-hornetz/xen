@@ -35,12 +35,6 @@ MAKEFLAGS += -rR
 
 EFI_MOUNTPOINT ?= $(BOOT_DIR)/efi
 
-ARCH=$(XEN_TARGET_ARCH)
-SRCARCH=$(shell echo $(ARCH) | \
-          sed -e 's/x86.*/x86/' -e s'/arm\(32\|64\)/arm/g' \
-              -e s'/riscv.*/riscv/g' -e s'/ppc.*/ppc/g')
-export ARCH SRCARCH
-
 # Allow someone to change their config file
 export KCONFIG_CONFIG ?= .config
 
@@ -240,11 +234,13 @@ include scripts/Kbuild.include
 # we need XEN_TARGET_ARCH to generate the proper config
 include $(XEN_ROOT)/Config.mk
 
-# Set ARCH/SUBARCH appropriately.
-export TARGET_SUBARCH  := $(XEN_TARGET_ARCH)
-export TARGET_ARCH     := $(shell echo $(XEN_TARGET_ARCH) | \
-                            sed -e 's/x86.*/x86/' -e s'/arm\(32\|64\)/arm/g' \
-                                -e s'/riscv.*/riscv/g' -e s'/ppc.*/ppc/g')
+# Set ARCH/SRCARCH appropriately.
+
+ARCH := $(XEN_TARGET_ARCH)
+SRCARCH := $(shell echo $(ARCH) | \
+    sed -e 's/x86.*/x86/' -e 's/arm\(32\|64\)/arm/g' \
+        -e 's/riscv.*/riscv/g' -e 's/ppc.*/ppc/g')
+export ARCH SRCARCH
 
 export CONFIG_SHELL := $(SHELL)
 export CC CXX LD NM OBJCOPY OBJDUMP ADDR2LINE
@@ -262,7 +258,7 @@ export XEN_TREEWIDE_CFLAGS := $(CFLAGS)
 ifneq ($(shell $(CC) --version 2>&1 | head -n 1 | grep clang),)
 CLANG_FLAGS :=
 
-ifeq ($(TARGET_ARCH),x86)
+ifeq ($(SRCARCH),x86)
 # The tests to select whether the integrated assembler is usable need to happen
 # before testing any assembler features, or else the result of the tests would
 # be stale if the integrated assembler is not used.
@@ -430,22 +426,22 @@ endif
 
 ifdef building_out_of_srctree
     CFLAGS += -I$(objtree)/include
-    CFLAGS += -I$(objtree)/arch/$(TARGET_ARCH)/include
+    CFLAGS += -I$(objtree)/arch/$(SRCARCH)/include
 endif
 CFLAGS += -I$(srctree)/include
-CFLAGS += -I$(srctree)/arch/$(TARGET_ARCH)/include
+CFLAGS += -I$(srctree)/arch/$(SRCARCH)/include
 
 # Note that link order matters!
 ALL_OBJS-y                := common/built_in.o
 ALL_OBJS-y                += drivers/built_in.o
 ALL_OBJS-y                += lib/built_in.o
 ALL_OBJS-y                += xsm/built_in.o
-ALL_OBJS-y                += arch/$(TARGET_ARCH)/built_in.o
+ALL_OBJS-y                += arch/$(SRCARCH)/built_in.o
 ALL_OBJS-$(CONFIG_CRYPTO) += crypto/built_in.o
 
 ALL_LIBS-y                := lib/lib.a
 
-include $(srctree)/arch/$(TARGET_ARCH)/arch.mk
+include $(srctree)/arch/$(SRCARCH)/arch.mk
 
 # define new variables to avoid the ones defined in Config.mk
 export XEN_CFLAGS := $(CFLAGS)
@@ -589,8 +585,8 @@ $(TARGET): outputmakefile FORCE
 	$(Q)$(MAKE) $(build)=tools
 	$(Q)$(MAKE) $(build)=. include/xen/compile.h
 	$(Q)$(MAKE) $(build)=include all
-	$(Q)$(MAKE) $(build)=arch/$(TARGET_ARCH) include
-	$(Q)$(MAKE) $(build)=. arch/$(TARGET_ARCH)/include/asm/asm-offsets.h
+	$(Q)$(MAKE) $(build)=arch/$(SRCARCH) include
+	$(Q)$(MAKE) $(build)=. arch/$(SRCARCH)/include/asm/asm-offsets.h
 	$(Q)$(MAKE) $(build)=. MKRELOC=$(MKRELOC) 'ALL_OBJS=$(ALL_OBJS-y)' 'ALL_LIBS=$(ALL_LIBS-y)' $@
 
 SUBDIRS = xsm arch common crypto drivers lib test

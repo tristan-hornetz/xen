@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+
 #include <xen/compiler.h>
 #include <xen/init.h>
 #include <xen/kernel.h>
@@ -16,8 +18,6 @@ struct mmu_desc {
     pte_t *next_pgtbl;
     pte_t *pgtbl_base;
 };
-
-extern unsigned char cpu0_boot_stack[STACK_SIZE];
 
 #define PHYS_OFFSET ((unsigned long)_start - XEN_VIRT_START)
 #define LOAD_TO_LINK(addr) ((addr) - PHYS_OFFSET)
