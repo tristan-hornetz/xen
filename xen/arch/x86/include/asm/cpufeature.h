@@ -23,7 +23,7 @@ struct cpuinfo_x86 {
     unsigned char x86_vendor;          /* CPU vendor */
     unsigned char x86_model;
     unsigned char x86_mask;
-    int cpuid_level;                   /* Maximum supported CPUID level, -1=no CPUID */
+    unsigned int cpuid_level;          /* Maximum supported CPUID level */
     unsigned int extended_cpuid_level; /* Maximum supported CPUID extended level */
     unsigned int x86_capability[NCAPINTS];
     char x86_vendor_id[16];
@@ -52,8 +52,16 @@ static inline bool boot_cpu_has(unsigned int feat)
     return cpu_has(&boot_cpu_data, feat);
 }
 
-#define CPUID_PM_LEAF                    6
-#define CPUID6_ECX_APERFMPERF_CAPABILITY 0x1
+#define CPUID_PM_LEAF                                6
+#define CPUID6_EAX_HWP                               BIT(7, U)
+#define CPUID6_EAX_HWP_NOTIFICATION                  BIT(8, U)
+#define CPUID6_EAX_HWP_ACTIVITY_WINDOW               BIT(9, U)
+#define CPUID6_EAX_HWP_ENERGY_PERFORMANCE_PREFERENCE BIT(10, U)
+#define CPUID6_EAX_HWP_PACKAGE_LEVEL_REQUEST         BIT(11, U)
+#define CPUID6_EAX_HDC                               BIT(13, U)
+#define CPUID6_EAX_HWP_PECI                          BIT(16, U)
+#define CPUID6_EAX_HW_FEEDBACK                       BIT(19, U)
+#define CPUID6_ECX_APERFMPERF_CAPABILITY             BIT(0, U)
 
 /* CPUID level 0x00000001.edx */
 #define cpu_has_fpu             1
@@ -195,6 +203,8 @@ static inline bool boot_cpu_has(unsigned int feat)
 #define cpu_has_taa_no          boot_cpu_has(X86_FEATURE_TAA_NO)
 #define cpu_has_fb_clear        boot_cpu_has(X86_FEATURE_FB_CLEAR)
 #define cpu_has_rrsba           boot_cpu_has(X86_FEATURE_RRSBA)
+#define cpu_has_gds_ctrl        boot_cpu_has(X86_FEATURE_GDS_CTRL)
+#define cpu_has_gds_no          boot_cpu_has(X86_FEATURE_GDS_NO)
 
 /* Synthesized. */
 #define cpu_has_arch_perfmon    boot_cpu_has(X86_FEATURE_ARCH_PERFMON)

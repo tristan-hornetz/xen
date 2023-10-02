@@ -243,6 +243,7 @@ tpm_emulator-$(XEN_TARGET_ARCH): tpm_emulator-$(TPMEMU_VERSION).tar.gz
 	patch -d $@ -p1 < vtpm_extern.patch
 	patch -d $@ -p1 < vtpm-microsecond-duration.patch
 	patch -d $@ -p1 < vtpm-command-duration.patch
+	patch -d $@ -p1 < vtpm-tpm_bn_t-addr.patch
 	mkdir $@/build
 	cd $@/build; CC=${CC} $(CMAKE) .. -DCMAKE_C_FLAGS:STRING="-std=c99 -DTPM_NO_EXTERN $(TARGET_CPPFLAGS) $(TARGET_CFLAGS) -Wno-declaration-after-statement"
 	touch $@
@@ -370,10 +371,10 @@ endef
 
 $(foreach lib,$(STUB_LIBS),$(eval $(call BUILD_lib,$(lib))))
 
-xenstore/stamp: $(XEN_ROOT)/tools/xenstore/Makefile.common
+xenstore/stamp: $(XEN_ROOT)/tools/xenstored/Makefile.common
 	$(do_links)
 
-xenstorepvh/stamp: $(XEN_ROOT)/tools/xenstore/Makefile.common
+xenstorepvh/stamp: $(XEN_ROOT)/tools/xenstored/Makefile.common
 	$(do_links)
 
 LINK_DIRS := xenstore xenstorepvh $(foreach dir,$(STUB_LIBS),libs-$(XEN_TARGET_ARCH)/$(dir))
@@ -669,7 +670,6 @@ crossclean: clean
 	rm -fr ioemu xenstore xenstorepvh
 	rm -fr gmp-$(XEN_TARGET_ARCH)
 	rm -fr polarssl-$(XEN_TARGET_ARCH)
-	rm -fr openssl-$(XEN_TARGET_ARCH)
 	rm -fr tpm_emulator-$(XEN_TARGET_ARCH)
 	rm -f mk-headers-$(XEN_TARGET_ARCH)
 	rm -fr ocaml-$(XEN_TARGET_ARCH)
@@ -681,7 +681,6 @@ patchclean: crossclean
 	rm -fr newlib-$(NEWLIB_VERSION)
 	rm -fr gmp-$(XEN_TARGET_ARCH)
 	rm -fr polarssl-$(XEN_TARGET_ARCH)
-	rm -fr openssl-$(XEN_TARGET_ARCH)
 	rm -fr tpm_emulator-$(XEN_TARGET_ARCH)
 	rm -fr lwip-$(XEN_TARGET_ARCH)
 	rm -fr grub-upstream
@@ -698,7 +697,6 @@ downloadclean: patchclean
 	rm -f lwip-$(LWIP_VERSION).tar.gz
 	rm -f ocaml-$(OCAML_VERSION).tar.gz
 	rm -f polarssl-$(POLARSSL_VERSION)-gpl.tgz
-	rm -f openssl-$(POLARSSL_VERSION)-gpl.tgz
 
 .PHONY: distclean
 distclean: downloadclean

@@ -24,6 +24,7 @@
 #include <xen/page-defs.h>
 #include <xen/pci.h>
 #include <xen/spinlock.h>
+#include <xen/errno.h>
 #include <public/domctl.h>
 #include <public/hvm/ioreq.h>
 #include <asm/device.h>
@@ -46,13 +47,13 @@ static inline dfn_t dfn_add(dfn_t dfn, unsigned long i)
     return _dfn(dfn_x(dfn) + i);
 }
 
-static inline bool_t dfn_eq(dfn_t x, dfn_t y)
+static inline bool dfn_eq(dfn_t x, dfn_t y)
 {
     return dfn_x(x) == dfn_x(y);
 }
 
 #ifdef CONFIG_HAS_PASSTHROUGH
-extern bool_t iommu_enable, iommu_enabled;
+extern bool iommu_enable, iommu_enabled;
 extern bool force_iommu, iommu_verbose;
 /* Boolean except for the specific purposes of drivers/passthrough/iommu.c. */
 extern uint8_t iommu_quarantine;
@@ -108,8 +109,8 @@ static inline void clear_iommu_hap_pt_share(void)
 #endif
 }
 
-extern bool_t iommu_debug;
-extern bool_t amd_iommu_perdev_intremap;
+extern bool iommu_debug;
+extern bool amd_iommu_perdev_intremap;
 
 extern bool iommu_hwdom_strict, iommu_hwdom_passthrough, iommu_hwdom_inclusive;
 extern int8_t iommu_hwdom_reserved;
@@ -165,10 +166,10 @@ enum
  * values indicate partial completion, which is possible only with
  * IOMMUF_preempt passed in.
  */
-long __must_check iommu_map(struct domain *d, dfn_t dfn, mfn_t mfn,
+long __must_check iommu_map(struct domain *d, dfn_t dfn0, mfn_t mfn0,
                             unsigned long page_count, unsigned int flags,
                             unsigned int *flush_flags);
-long __must_check iommu_unmap(struct domain *d, dfn_t dfn,
+long __must_check iommu_unmap(struct domain *d, dfn_t dfn0,
                               unsigned long page_count, unsigned int flags,
                               unsigned int *flush_flags);
 
@@ -193,15 +194,17 @@ enum iommu_feature
     IOMMU_FEAT_count
 };
 
-bool_t iommu_has_feature(struct domain *d, enum iommu_feature feature);
+bool iommu_has_feature(struct domain *d, enum iommu_feature feature);
 
 #ifdef CONFIG_HAS_PCI
 struct pirq;
-int hvm_do_IRQ_dpci(struct domain *, struct pirq *);
-int pt_irq_create_bind(struct domain *, const struct xen_domctl_bind_pt_irq *);
-int pt_irq_destroy_bind(struct domain *, const struct xen_domctl_bind_pt_irq *);
+int hvm_do_IRQ_dpci(struct domain *d, struct pirq *pirq);
+int pt_irq_create_bind(struct domain *d,
+                       const struct xen_domctl_bind_pt_irq *pt_irq_bind);
+int pt_irq_destroy_bind(struct domain *d,
+                        const struct xen_domctl_bind_pt_irq *pt_irq_bind);
 
-struct hvm_irq_dpci *domain_get_irq_dpci(const struct domain *);
+struct hvm_irq_dpci *domain_get_irq_dpci(const struct domain *d);
 void free_hvm_irq_dpci(struct hvm_irq_dpci *dpci);
 
 struct msi_desc;
@@ -229,8 +232,18 @@ int iommu_release_dt_devices(struct domain *d);
  */
 int iommu_add_dt_device(struct dt_device_node *np);
 
-int iommu_do_dt_domctl(struct xen_domctl *, struct domain *,
-                       XEN_GUEST_HANDLE_PARAM(xen_domctl_t));
+int iommu_do_dt_domctl(struct xen_domctl *domctl, struct domain *d,
+                       XEN_GUEST_HANDLE_PARAM(xen_domctl_t) u_domctl);
+
+/*
+ * Helper to remove master device from the IOMMU.
+ *
+ * Return values:
+ *  0 : device is de-registered from IOMMU.
+ * <0 : error while removing the device from IOMMU.
+ * >0 : IOMMU is not enabled/present.
+ */
+int iommu_remove_dt_device(struct dt_device_node *np);
 
 #endif /* HAS_DEVICE_TREE */
 
@@ -278,7 +291,8 @@ struct iommu_ops {
     int (*enable_x2apic)(void);
     void (*disable_x2apic)(void);
 
-    void (*update_ire_from_apic)(unsigned int apic, unsigned int reg, unsigned int value);
+    void (*update_ire_from_apic)(unsigned int apic, unsigned int pin,
+                                 uint64_t rte);
     unsigned int (*read_apic_from_ire)(unsigned int apic, unsigned int reg);
 
     int (*setup_hpet_msi)(struct msi_desc *);
@@ -386,12 +400,12 @@ static inline int iommu_do_domctl(struct xen_domctl *domctl, struct domain *d,
 int __must_check iommu_suspend(void);
 void iommu_resume(void);
 void iommu_crash_shutdown(void);
-int iommu_get_reserved_device_memory(iommu_grdm_t *, void *);
+int iommu_get_reserved_device_memory(iommu_grdm_t *func, void *ctxt);
 int iommu_quarantine_dev_init(device_t *dev);
 
 #ifdef CONFIG_HAS_PCI
-int iommu_do_pci_domctl(struct xen_domctl *, struct domain *d,
-                        XEN_GUEST_HANDLE_PARAM(xen_domctl_t));
+int iommu_do_pci_domctl(struct xen_domctl *domctl, struct domain *d,
+                        XEN_GUEST_HANDLE_PARAM(xen_domctl_t) u_domctl);
 #endif
 
 void iommu_dev_iotlb_flush_timeout(struct domain *d, struct pci_dev *pdev);
@@ -406,7 +420,7 @@ void iommu_dev_iotlb_flush_timeout(struct domain *d, struct pci_dev *pdev);
  * iommu_iotlb_flush/iommu_iotlb_flush_all will be explicitly called by
  * the caller.
  */
-DECLARE_PER_CPU(bool_t, iommu_dont_flush_iotlb);
+DECLARE_PER_CPU(bool, iommu_dont_flush_iotlb);
 
 extern struct spinlock iommu_pt_cleanup_lock;
 extern struct page_list_head iommu_pt_cleanup_list;

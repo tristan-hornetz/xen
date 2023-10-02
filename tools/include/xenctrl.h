@@ -1823,6 +1823,21 @@ struct xc_xend_cpuid {
 };
 
 /*
+ * MSR policy data.
+ *
+ * The format of the policy string is the following:
+ *   '1' -> force to 1
+ *   '0' -> force to 0
+ *   'x' -> we don't care (use default)
+ *   'k' -> pass through host value
+ */
+struct xc_msr {
+    uint32_t index;
+    char policy[65];
+};
+#define XC_MSR_INPUT_UNUSED 0xffffffffu
+
+/*
  * Make adjustments to the CPUID settings for a domain.
  *
  * This path is used in two cases.  First, for fresh boots of the domain, and
@@ -1833,13 +1848,15 @@ struct xc_xend_cpuid {
  * Either pass a full new @featureset (and @nr_features), or adjust individual
  * features (@pae, @itsc, @nested_virt).
  *
- * Then (optionally) apply legacy XEND overrides (@xend) to the result.
+ * Then (optionally) apply legacy XEND CPUID overrides (@xend) or MSR (@msr)
+ * to the result.
  */
 int xc_cpuid_apply_policy(xc_interface *xch,
                           uint32_t domid, bool restore,
                           const uint32_t *featureset,
                           unsigned int nr_features, bool pae, bool itsc,
-                          bool nested_virt, const struct xc_xend_cpuid *xend);
+                          bool nested_virt, const struct xc_xend_cpuid *xend,
+                          const struct xc_msr *msr);
 int xc_mca_op(xc_interface *xch, struct xen_mc *mc);
 int xc_mca_op_inject_v2(xc_interface *xch, unsigned int flags,
                         xc_cpumap_t cpumap, unsigned int nr_cpus);
@@ -1892,6 +1909,7 @@ int xc_smt_disable(xc_interface *xch);
  */
 typedef struct xen_userspace xc_userspace_t;
 typedef struct xen_ondemand xc_ondemand_t;
+typedef struct xen_cppc_para xc_cppc_para_t;
 
 struct xc_get_cpufreq_para {
     /* IN/OUT variable */
@@ -1909,26 +1927,35 @@ struct xc_get_cpufreq_para {
     uint32_t cpuinfo_cur_freq;
     uint32_t cpuinfo_max_freq;
     uint32_t cpuinfo_min_freq;
-    uint32_t scaling_cur_freq;
-
-    char scaling_governor[CPUFREQ_NAME_LEN];
-    uint32_t scaling_max_freq;
-    uint32_t scaling_min_freq;
-
-    /* for specific governor */
     union {
-        xc_userspace_t userspace;
-        xc_ondemand_t ondemand;
+        struct {
+            uint32_t scaling_cur_freq;
+
+            char scaling_governor[CPUFREQ_NAME_LEN];
+            uint32_t scaling_max_freq;
+            uint32_t scaling_min_freq;
+
+            /* for specific governor */
+            union {
+                xc_userspace_t userspace;
+                xc_ondemand_t ondemand;
+            } u;
+        } s;
+        xc_cppc_para_t cppc_para;
     } u;
 
     int32_t turbo_enabled;
 };
+
+typedef struct xen_set_cppc_para xc_set_cppc_para_t;
 
 int xc_get_cpufreq_para(xc_interface *xch, int cpuid,
                         struct xc_get_cpufreq_para *user_para);
 int xc_set_cpufreq_gov(xc_interface *xch, int cpuid, char *govname);
 int xc_set_cpufreq_para(xc_interface *xch, int cpuid,
                         int ctrl_type, int ctrl_value);
+int xc_set_cpufreq_cppc(xc_interface *xch, int cpuid,
+                        xc_set_cppc_para_t *set_cppc);
 int xc_get_cpufreq_avgfreq(xc_interface *xch, int cpuid, int *avg_freq);
 
 int xc_set_sched_opt_smt(xc_interface *xch, uint32_t value);
@@ -2625,6 +2652,11 @@ int xc_livepatch_replace(xc_interface *xch, char *name, uint32_t timeout, uint32
  */
 int xc_domain_cacheflush(xc_interface *xch, uint32_t domid,
                          xen_pfn_t start_pfn, xen_pfn_t nr_pfns);
+
+#if defined(__arm__) || defined(__aarch64__)
+int xc_dt_overlay(xc_interface *xch, void *overlay_fdt,
+                  uint32_t overlay_fdt_size, uint8_t overlay_op);
+#endif
 
 /* Compat shims */
 #include "xenctrl_compat.h"

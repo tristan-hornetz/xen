@@ -9,7 +9,7 @@ for the definitions of the support status levels etc.
 
 # Release Support
 
-    Xen-Version: 4.18-unstable
+    Xen-Version: 4.18-rc
     Initial-Release: n/a
     Supported-Until: TBD
     Security-Support-Until: Unreleased - not yet security-supported
@@ -39,8 +39,10 @@ supported in this document.
 
     Status: Supported
     Status, Cortex A57 r0p0-r1p1: Supported, not security supported
+    Status, Cortex A77 r0p0-r1p0: Supported, not security supported
 
 For the Cortex A57 r0p0 - r1p1, see Errata 832075.
+For the Cortex A77 r0p0 - r1p0, see Errata 1508412.
 
 ## Host hardware support
 
@@ -840,9 +842,24 @@ that covers the DMA of the device to be passed through.
 
 No support for QEMU backends in a 16K or 64K domain.
 
+### ARM: Firmware Framework for Arm A-profile (FF-A) Mediator
+
+    Status, Arm64: Tech Preview
+
+There are still some code paths where a vCPU may hog a pCPU longer than
+necessary. The FF-A mediator is not yet implemented for Arm32. Part of the
+FF-A specification is not supported, see the top comment in
+xen/arch/arm/tee/ffa.c for limitations.
+
 ### ARM: Guest Device Tree support
 
     Status: Supported
+
+### Device Tree Overlays
+
+Add/Remove device tree nodes using a device tree overlay binary (.dtbo).
+
+    Status, ARM: Experimental
 
 ### ARM: Guest ACPI support
 

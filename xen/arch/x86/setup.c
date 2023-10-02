@@ -47,10 +47,12 @@
 #include <asm/mach-generic/mach_apic.h> /* for generic_apic_probe */
 #include <asm/setup.h>
 #include <xen/cpu.h>
+#include <xen/cpuidle.h>
 #include <asm/nmi.h>
 #include <asm/alternative.h>
 #include <asm/mc146818rtc.h>
 #include <asm/cpu-policy.h>
+#include <asm/invpcid.h>
 #include <asm/spec_ctrl.h>
 #include <asm/guest.h>
 #include <asm/microcode.h>
@@ -88,7 +90,7 @@ boolean_param("noapic", skip_ioapic_setup);
 
 /* **** Linux config option: propagated to domain0. */
 /* xen_cpuidle: xen control cstate. */
-s8 __read_mostly xen_cpuidle = -1;
+int8_t __read_mostly xen_cpuidle = -1;
 boolean_param("cpuidle", xen_cpuidle);
 
 #ifndef NDEBUG
@@ -686,7 +688,7 @@ static void __init parse_video_info(void)
 #endif
 }
 
-static void __init kexec_reserve_area(struct e820map *e820)
+static void __init kexec_reserve_area(void)
 {
 #ifdef CONFIG_KEXEC
     unsigned long kdump_start = kexec_crash_area.start;
@@ -700,7 +702,7 @@ static void __init kexec_reserve_area(struct e820map *e820)
 
     is_reserved = true;
 
-    if ( !reserve_e820_ram(e820, kdump_start, kdump_start + kdump_size) )
+    if ( !reserve_e820_ram(&boot_e820, kdump_start, kdump_start + kdump_size) )
     {
         printk("Kdump: DISABLED (failed to reserve %luMB (%lukB) at %#lx)"
                "\n", kdump_size >> 20, kdump_size >> 10, kdump_start);
@@ -966,9 +968,10 @@ static struct domain *__init create_dom0(const module_t *image,
 /* How much of the directmap is prebuilt at compile time. */
 #define PREBUILT_MAP_LIMIT (1 << L2_PAGETABLE_SHIFT)
 
+/* SAF-1-safe */
 void __init noreturn __start_xen(unsigned long mbi_p)
 {
-    char *memmap_type = NULL;
+    const char *memmap_type = NULL;
     char *cmdline, *kextra, *loader;
     void *bsp_stack;
     struct cpu_info *info = get_cpu_info(), *bsp_info;
@@ -1308,7 +1311,7 @@ void __init noreturn __start_xen(unsigned long mbi_p)
         if ( e820.map[i].type == E820_RAM )
             nr_pages += e820.map[i].size >> PAGE_SHIFT;
     set_kexec_crash_area_size((u64)nr_pages << PAGE_SHIFT);
-    kexec_reserve_area(&boot_e820);
+    kexec_reserve_area();
 
     initial_images = mod;
     nr_initial_images = mbi->mods_count;
@@ -1495,7 +1498,7 @@ void __init noreturn __start_xen(unsigned long mbi_p)
         reserve_e820_ram(&boot_e820, __pa(_stext), __pa(__2M_rwdata_end));
 
     /* Late kexec reservation (dynamic start address). */
-    kexec_reserve_area(&boot_e820);
+    kexec_reserve_area();
 
     setup_max_pdx(raw_max_page);
     if ( highmem_start )
@@ -1577,8 +1580,7 @@ void __init noreturn __start_xen(unsigned long mbi_p)
         s = map_s;
         if ( s < map_e )
         {
-            uint64_t mask = (1UL << L2_PAGETABLE_SHIFT) - 1;
-
+            mask = (1UL << L2_PAGETABLE_SHIFT) - 1;
             map_s = (s + mask) & ~mask;
             map_e &= ~mask;
             init_boot_pages(map_s, map_e);

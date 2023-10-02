@@ -268,15 +268,9 @@ static int optee_domain_init(struct domain *d)
     return 0;
 }
 
-static uint64_t regpair_to_uint64(register_t reg0, register_t reg1)
+static int optee_domain_teardown(struct domain *d)
 {
-    return ((uint64_t)reg0 << 32) | (uint32_t)reg1;
-}
-
-static void uint64_to_regpair(register_t *reg0, register_t *reg1, uint64_t val)
-{
-    *reg0 = val >> 32;
-    *reg1 = (uint32_t)val;
+    return 0;
 }
 
 static struct page_info *get_domain_ram_page(gfn_t gfn)
@@ -1732,6 +1726,7 @@ static const struct tee_mediator_ops optee_ops =
 {
     .probe = optee_probe,
     .domain_init = optee_domain_init,
+    .domain_teardown = optee_domain_teardown,
     .relinquish_resources = optee_relinquish_resources,
     .handle_call = optee_handle_call,
 };

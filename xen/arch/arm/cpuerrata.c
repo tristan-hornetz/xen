@@ -370,6 +370,7 @@ custom_param("spec-ctrl", parse_spec_ctrl);
 
 /* Arm64 only for now as for Arm32 the workaround is currently handled in C. */
 #ifdef CONFIG_ARM_64
+/* SAF-1-safe */
 void __init arm_enable_wa2_handling(const struct alt_instr *alt,
                                     const uint32_t *origptr,
                                     uint32_t *updptr, int nr_inst)
@@ -669,6 +670,14 @@ static const struct arm_cpu_capabilities arm_errata[] = {
         .capability = ARM64_WORKAROUND_AT_SPECULATE,
         MIDR_ALL_VERSIONS(MIDR_CORTEX_A57),
     },
+#ifdef CONFIG_ARM64_ERRATUM_1508412
+    {
+        /* Cortex-A77 r0p0 - r1p0 */
+        .desc = "ARM erratum 1508412 (hypervisor portion)",
+        .capability = ARM64_WORKAROUND_1508412,
+        MIDR_RANGE(MIDR_CORTEX_A77, 0, 1),
+    },
+#endif
     {
         /* Cortex-A55 (All versions as erratum is open in SDEN v14) */
         .desc = "ARM erratum 1530923",
@@ -687,11 +696,11 @@ void __init enable_errata_workarounds(void)
 {
     enable_cpu_capabilities(arm_errata);
 
-#ifdef CONFIG_ARM64_ERRATUM_832075
-    if ( cpus_have_cap(ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE) )
+#if defined(CONFIG_ARM64_ERRATUM_832075) || defined(CONFIG_ARM64_ERRATUM_1508412)
+    if ( cpus_have_cap(ARM64_WORKAROUND_DEVICE_LOAD_ACQUIRE) ||
+         cpus_have_cap(ARM64_WORKAROUND_1508412) )
     {
-        printk_once("**** This CPU is affected by the errata 832075.                      ****\n"
-                    "**** Guests without CPU erratum workarounds can deadlock the system! ****\n"
+        printk_once("**** Guests without CPU erratum workarounds can deadlock the system! ****\n"
                     "**** Only trusted guests should be used.                             ****\n");
 
         /* Taint the machine has being insecure */

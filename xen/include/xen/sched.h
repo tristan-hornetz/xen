@@ -21,6 +21,7 @@
 #include <xen/smp.h>
 #include <xen/perfc.h>
 #include <asm/atomic.h>
+#include <asm/current.h>
 #include <xen/vpci.h>
 #include <xen/wait.h>
 #include <public/xen.h>
@@ -589,6 +590,7 @@ struct domain
      */
     struct {
         unsigned int val;
+        unsigned int arch_val;
         struct vcpu *vcpu;
     } teardown;
 
@@ -788,9 +790,9 @@ int  sched_init_vcpu(struct vcpu *v);
 void sched_destroy_vcpu(struct vcpu *v);
 int  sched_init_domain(struct domain *d, unsigned int poolid);
 void sched_destroy_domain(struct domain *d);
-long sched_adjust(struct domain *, struct xen_domctl_scheduler_op *);
-long sched_adjust_global(struct xen_sysctl_scheduler_op *);
-int  sched_id(void);
+long sched_adjust(struct domain *d, struct xen_domctl_scheduler_op *op);
+long sched_adjust_global(struct xen_sysctl_scheduler_op *op);
+int  scheduler_id(void);
 
 /*
  * sched_get_id_by_name - retrieves a scheduler id given a scheduler name
@@ -830,11 +832,11 @@ void context_switch(
 
 /*
  * As described above, context_switch() must call this function when the
- * local CPU is no longer running in @prev's context, and @prev's context is
+ * local CPU is no longer running in @vprev's context, and @vprev's context is
  * saved to memory. Alternatively, if implementing lazy context switching,
- * ensure that invoking sync_vcpu_execstate() will switch and commit @prev.
+ * ensure that invoking sync_vcpu_execstate() will switch and commit @vprev.
  */
-void sched_context_switched(struct vcpu *prev, struct vcpu *vnext);
+void sched_context_switched(struct vcpu *vprev, struct vcpu *vnext);
 
 /* Called by the scheduler to continue running the current VCPU. */
 void continue_running(

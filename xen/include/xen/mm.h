@@ -31,6 +31,17 @@
  *   (i.e. all devices assigned to) a guest share a single DMA address space
  *   and, by default, Xen will ensure dfn == pfn.
  *
+ * pdx: Page InDeX
+ *   Indices into the frame table holding the per-page's book-keeping
+ *   metadata. A compression scheme may be used, so there's a possibly non
+ *   identity mapping between valid(mfn) <-> valid(pdx). See the comments
+ *   in pdx.c for an in-depth explanation of that mapping. This may also
+ *   have a knock-on effect on the directmap, as "compressed" pfns may not have
+ *   corresponding mapped frames.
+ *
+ * maddr: Machine Address
+ *   The physical address that corresponds to an mfn
+ *
  * WARNING: Some of these terms have changed over time while others have been
  * used inconsistently, meaning that a lot of existing code does not match the
  * definitions above.  New code should use these terms as described here, and
@@ -148,6 +159,8 @@ int assign_page(
 /* Dump info to serial console */
 void arch_dump_shared_mem_info(void);
 
+extern unsigned long max_page;
+extern unsigned long total_pages;
 extern paddr_t mem_hotplug;
 
 /*

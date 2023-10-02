@@ -165,6 +165,9 @@ struct page_info
 #define _PGC_need_scrub   _PGC_allocated
 #define PGC_need_scrub    PGC_allocated
 
+/* Non-boot CPUs use this to find the correct pagetables. */
+extern uint64_t init_ttbr;
+
 extern mfn_t directmap_mfn_start, directmap_mfn_end;
 extern vaddr_t directmap_virt_end;
 #ifdef CONFIG_ARM_64
@@ -197,9 +200,6 @@ extern unsigned long directmap_base_pdx;
 #define frame_table ((struct page_info *)FRAMETABLE_VIRT_START)
 /* PDX of the first page in the frame table. */
 extern unsigned long frametable_base_pdx;
-
-extern unsigned long max_page;
-extern unsigned long total_pages;
 
 #define PDX_GROUP_SHIFT SECOND_SHIFT
 
@@ -280,6 +280,19 @@ static inline paddr_t __virt_to_maddr(vaddr_t va)
 #define virt_to_maddr(va)   __virt_to_maddr((vaddr_t)(va))
 
 #ifdef CONFIG_ARM_32
+/**
+ * Find the virtual address corresponding to a machine address
+ *
+ * Only memory backing the XENHEAP has a corresponding virtual address to
+ * be found. This is so we can save precious virtual space, as it's in
+ * short supply on arm32. This mapping is not subject to PDX compression
+ * because XENHEAP is known to be physically contiguous and can't hence
+ * jump over the PDX hole. This means we can avoid the roundtrips
+ * converting to/from pdx.
+ *
+ * @param ma Machine address
+ * @return Virtual address mapped to `ma`
+ */
 static inline void *maddr_to_virt(paddr_t ma)
 {
     ASSERT(is_xen_heap_mfn(maddr_to_mfn(ma)));
@@ -287,14 +300,26 @@ static inline void *maddr_to_virt(paddr_t ma)
     return (void *)(unsigned long) ma + XENHEAP_VIRT_START;
 }
 #else
+/**
+ * Find the virtual address corresponding to a machine address
+ *
+ * The directmap covers all conventional memory accesible by the
+ * hypervisor. This means it's subject to PDX compression.
+ *
+ * Note there's an extra offset applied (directmap_base_pdx) on top of the
+ * regular PDX compression logic. Its purpose is to skip over the initial
+ * range of non-existing memory, should there be one.
+ *
+ * @param ma Machine address
+ * @return Virtual address mapped to `ma`
+ */
 static inline void *maddr_to_virt(paddr_t ma)
 {
     ASSERT((mfn_to_pdx(maddr_to_mfn(ma)) - directmap_base_pdx) <
            (DIRECTMAP_SIZE >> PAGE_SHIFT));
     return (void *)(XENHEAP_VIRT_START -
                     (directmap_base_pdx << PAGE_SHIFT) +
-                    ((ma & ma_va_bottom_mask) |
-                     ((ma & ma_top_mask) >> pfn_pdx_hole_shift)));
+                    maddr_to_directmapoff(ma));
 }
 #endif
 

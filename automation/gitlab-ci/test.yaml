@@ -1,14 +1,9 @@
 .test-jobs-common:
   stage: test
   image: registry.gitlab.com/xen-project/xen/${CONTAINER}
-  except:
-    - master
-    - smoke
-    - /^coverity-tested\/.*/
-    - /^stable-.*/
 
 .arm64-test-needs: &arm64-test-needs
-  - alpine-3.12-arm64-rootfs-export
+  - alpine-3.18-arm64-rootfs-export
   - kernel-5.19-arm64-export
   - qemu-system-aarch64-6.0.0-arm64-export
 
@@ -16,13 +11,13 @@
   - qemu-system-aarch64-6.0.0-arm32-export
 
 .x86-64-test-needs: &x86-64-test-needs
-  - alpine-3.12-rootfs-export
+  - alpine-3.18-rootfs-export
   - kernel-6.1.19-export
 
 .qemu-arm64:
   extends: .test-jobs-common
   variables:
-    CONTAINER: debian:unstable-arm64v8
+    CONTAINER: debian:bookworm-arm64v8
     LOGFILE: qemu-smoke-arm64.log
   artifacts:
     paths:
@@ -35,7 +30,7 @@
 .qemu-arm32:
   extends: .test-jobs-common
   variables:
-    CONTAINER: debian:unstable-arm64v8
+    CONTAINER: debian:bookworm-arm64v8
     LOGFILE: qemu-smoke-arm32.log
   artifacts:
     paths:
@@ -71,6 +66,19 @@
   tags:
     - x86_64
 
+.qemu-ppc64le:
+  extends: .test-jobs-common
+  variables:
+    CONTAINER: debian:bullseye-ppc64le
+    LOGFILE: qemu-smoke-ppc64le.log
+  artifacts:
+    paths:
+      - smoke.serial
+      - '*.log'
+    when: always
+  tags:
+    - x86_64
+
 .xilinx-arm64:
   extends: .test-jobs-common
   variables:
@@ -92,7 +100,7 @@
   extends: .test-jobs-common
   variables:
     # the test controller runs on RPi4
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     LOGFILE: smoke-test.log
     PCIDEV: "03:00.0"
     PCIDEV_INTR: "MSI-X"
@@ -127,6 +135,7 @@ build-each-commit-gcc:
     CC: gcc
   script:
     - BASE=${BASE_SHA:-${CI_COMMIT_BEFORE_SHA}} TIP=${TIP_SHA:-${CI_COMMIT_SHA}} ./automation/gitlab-ci/build-each-commit.sh 2>&1 | tee ../build-each-commit-gcc.log
+  after_script:
     - mv ../build-each-commit-gcc.log .
   artifacts:
     paths:
@@ -142,7 +151,7 @@ xilinx-smoke-dom0less-arm64-gcc:
     - ./automation/scripts/xilinx-smoke-dom0less-arm64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-arm64
+    - alpine-3.18-gcc-arm64
 
 xilinx-smoke-dom0less-arm64-gcc-gem-passthrough:
   extends: .xilinx-arm64
@@ -150,7 +159,7 @@ xilinx-smoke-dom0less-arm64-gcc-gem-passthrough:
     - ./automation/scripts/xilinx-smoke-dom0less-arm64.sh gem-passthrough 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-arm64
+    - alpine-3.18-gcc-arm64
 
 adl-smoke-x86-64-gcc-debug:
   extends: .adl-x86-64
@@ -158,7 +167,7 @@ adl-smoke-x86-64-gcc-debug:
     - ./automation/scripts/qubes-x86-64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc-debug
+    - alpine-3.18-gcc-debug
 
 adl-smoke-x86-64-dom0pvh-gcc-debug:
   extends: .adl-x86-64
@@ -166,7 +175,7 @@ adl-smoke-x86-64-dom0pvh-gcc-debug:
     - ./automation/scripts/qubes-x86-64.sh dom0pvh 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc-debug
+    - alpine-3.18-gcc-debug
 
 adl-suspend-x86-64-gcc-debug:
   extends: .adl-x86-64
@@ -174,7 +183,7 @@ adl-suspend-x86-64-gcc-debug:
     - ./automation/scripts/qubes-x86-64.sh s3 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc-debug
+    - alpine-3.18-gcc-debug
 
 adl-pci-pv-x86-64-gcc-debug:
   extends: .adl-x86-64
@@ -182,7 +191,7 @@ adl-pci-pv-x86-64-gcc-debug:
     - ./automation/scripts/qubes-x86-64.sh pci-pv 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc-debug
+    - alpine-3.18-gcc-debug
 
 adl-pci-hvm-x86-64-gcc-debug:
   extends: .adl-x86-64
@@ -192,7 +201,7 @@ adl-pci-hvm-x86-64-gcc-debug:
     - ./automation/scripts/qubes-x86-64.sh pci-hvm 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc-debug
+    - alpine-3.18-gcc-debug
 
 zen3p-smoke-x86-64-gcc-debug:
   extends: .zen3p-x86-64
@@ -200,7 +209,7 @@ zen3p-smoke-x86-64-gcc-debug:
     - ./automation/scripts/qubes-x86-64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc-debug
+    - alpine-3.18-gcc-debug
 
 zen3p-smoke-x86-64-dom0pvh-gcc-debug:
   extends: .zen3p-x86-64
@@ -208,7 +217,7 @@ zen3p-smoke-x86-64-dom0pvh-gcc-debug:
     - ./automation/scripts/qubes-x86-64.sh dom0pvh 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc-debug
+    - alpine-3.18-gcc-debug
 
 zen3p-pci-hvm-x86-64-gcc-debug:
   extends: .zen3p-x86-64
@@ -216,7 +225,7 @@ zen3p-pci-hvm-x86-64-gcc-debug:
     - ./automation/scripts/qubes-x86-64.sh pci-hvm 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc-debug
+    - alpine-3.18-gcc-debug
 
 qemu-smoke-dom0-arm64-gcc:
   extends: .qemu-arm64
@@ -224,7 +233,7 @@ qemu-smoke-dom0-arm64-gcc:
     - ./automation/scripts/qemu-smoke-dom0-arm64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-arm64
+    - alpine-3.18-gcc-arm64
 
 qemu-smoke-dom0-arm64-gcc-debug:
   extends: .qemu-arm64
@@ -232,7 +241,7 @@ qemu-smoke-dom0-arm64-gcc-debug:
     - ./automation/scripts/qemu-smoke-dom0-arm64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-debug-arm64
+    - alpine-3.18-gcc-debug-arm64
 
 qemu-smoke-dom0less-arm64-gcc:
   extends: .qemu-arm64
@@ -240,7 +249,7 @@ qemu-smoke-dom0less-arm64-gcc:
     - ./automation/scripts/qemu-smoke-dom0less-arm64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-arm64
+    - alpine-3.18-gcc-arm64
 
 qemu-smoke-dom0less-arm64-gcc-debug:
   extends: .qemu-arm64
@@ -248,7 +257,7 @@ qemu-smoke-dom0less-arm64-gcc-debug:
     - ./automation/scripts/qemu-smoke-dom0less-arm64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-debug-arm64
+    - alpine-3.18-gcc-debug-arm64
 
 qemu-smoke-dom0less-arm64-gcc-staticmem:
   extends: .qemu-arm64
@@ -256,7 +265,7 @@ qemu-smoke-dom0less-arm64-gcc-staticmem:
     - ./automation/scripts/qemu-smoke-dom0less-arm64.sh static-mem 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-arm64-staticmem
+    - alpine-3.18-gcc-arm64-staticmem
 
 qemu-smoke-dom0less-arm64-gcc-debug-staticmem:
   extends: .qemu-arm64
@@ -264,7 +273,7 @@ qemu-smoke-dom0less-arm64-gcc-debug-staticmem:
     - ./automation/scripts/qemu-smoke-dom0less-arm64.sh static-mem 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-debug-arm64-staticmem
+    - alpine-3.18-gcc-debug-arm64-staticmem
 
 qemu-smoke-dom0less-arm64-gcc-staticheap:
  extends: .qemu-arm64
@@ -272,7 +281,7 @@ qemu-smoke-dom0less-arm64-gcc-staticheap:
    - ./automation/scripts/qemu-smoke-dom0less-arm64.sh static-heap 2>&1 | tee ${LOGFILE}
  needs:
    - *arm64-test-needs
-   - alpine-3.12-gcc-arm64
+   - alpine-3.18-gcc-arm64
 
 qemu-smoke-dom0less-arm64-gcc-debug-staticheap:
  extends: .qemu-arm64
@@ -280,7 +289,7 @@ qemu-smoke-dom0less-arm64-gcc-debug-staticheap:
    - ./automation/scripts/qemu-smoke-dom0less-arm64.sh static-heap 2>&1 | tee ${LOGFILE}
  needs:
    - *arm64-test-needs
-   - alpine-3.12-gcc-debug-arm64
+   - alpine-3.18-gcc-debug-arm64
 
 qemu-smoke-dom0less-arm64-gcc-static-shared-mem:
   extends: .qemu-arm64
@@ -288,7 +297,7 @@ qemu-smoke-dom0less-arm64-gcc-static-shared-mem:
     - ./automation/scripts/qemu-smoke-dom0less-arm64.sh static-shared-mem 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-arm64-static-shared-mem
+    - alpine-3.18-gcc-arm64-static-shared-mem
 
 qemu-smoke-dom0less-arm64-gcc-debug-static-shared-mem:
   extends: .qemu-arm64
@@ -296,7 +305,7 @@ qemu-smoke-dom0less-arm64-gcc-debug-static-shared-mem:
     - ./automation/scripts/qemu-smoke-dom0less-arm64.sh static-shared-mem 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-debug-arm64-static-shared-mem
+    - alpine-3.18-gcc-debug-arm64-static-shared-mem
 
 qemu-smoke-dom0less-arm64-gcc-boot-cpupools:
   extends: .qemu-arm64
@@ -304,7 +313,7 @@ qemu-smoke-dom0less-arm64-gcc-boot-cpupools:
     - ./automation/scripts/qemu-smoke-dom0less-arm64.sh boot-cpupools 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-arm64-boot-cpupools
+    - alpine-3.18-gcc-arm64-boot-cpupools
 
 qemu-smoke-dom0less-arm64-gcc-debug-boot-cpupools:
   extends: .qemu-arm64
@@ -312,14 +321,14 @@ qemu-smoke-dom0less-arm64-gcc-debug-boot-cpupools:
     - ./automation/scripts/qemu-smoke-dom0less-arm64.sh boot-cpupools 2>&1 | tee ${LOGFILE}
   needs:
     - *arm64-test-needs
-    - alpine-3.12-gcc-debug-arm64-boot-cpupools
+    - alpine-3.18-gcc-debug-arm64-boot-cpupools
 
 qemu-xtf-dom0less-arm64-gcc-hyp-xen-version:
   extends: .qemu-arm64
   script:
     - ./automation/scripts/qemu-xtf-dom0less-arm64.sh hyp-xen-version 2>&1 | tee ${LOGFILE}
   needs:
-    - alpine-3.12-gcc-arm64
+    - alpine-3.18-gcc-arm64
     - qemu-system-aarch64-6.0.0-arm64-export
 
 qemu-xtf-dom0less-arm64-gcc-debug-hyp-xen-version:
@@ -327,7 +336,7 @@ qemu-xtf-dom0less-arm64-gcc-debug-hyp-xen-version:
   script:
     - ./automation/scripts/qemu-xtf-dom0less-arm64.sh hyp-xen-version 2>&1 | tee ${LOGFILE}
   needs:
-    - alpine-3.12-gcc-debug-arm64
+    - alpine-3.18-gcc-debug-arm64
     - qemu-system-aarch64-6.0.0-arm64-export
 
 qemu-smoke-dom0-arm32-gcc:
@@ -344,7 +353,7 @@ qemu-smoke-dom0less-arm32-gcc:
     - ./automation/scripts/qemu-smoke-dom0less-arm32.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *arm32-test-needs
-    - debian-unstable-gcc-arm32
+    - debian-bookworm-gcc-arm32
 
 qemu-smoke-dom0less-arm32-gcc-debug:
   extends: .qemu-arm32
@@ -352,7 +361,7 @@ qemu-smoke-dom0less-arm32-gcc-debug:
     - ./automation/scripts/qemu-smoke-dom0less-arm32.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *arm32-test-needs
-    - debian-unstable-gcc-arm32-debug
+    - debian-bookworm-gcc-arm32-debug
 
 qemu-smoke-dom0less-arm32-gcc-staticmem:
   extends: .qemu-arm32
@@ -360,7 +369,7 @@ qemu-smoke-dom0less-arm32-gcc-staticmem:
     - ./automation/scripts/qemu-smoke-dom0less-arm32.sh static-mem 2>&1 | tee ${LOGFILE}
   needs:
     - *arm32-test-needs
-    - debian-unstable-gcc-arm32-staticmem
+    - debian-bookworm-gcc-arm32-staticmem
 
 qemu-smoke-dom0less-arm32-gcc-debug-staticmem:
   extends: .qemu-arm32
@@ -368,7 +377,7 @@ qemu-smoke-dom0less-arm32-gcc-debug-staticmem:
     - ./automation/scripts/qemu-smoke-dom0less-arm32.sh static-mem 2>&1 | tee ${LOGFILE}
   needs:
     - *arm32-test-needs
-    - debian-unstable-gcc-arm32-debug-staticmem
+    - debian-bookworm-gcc-arm32-debug-staticmem
 
 qemu-smoke-dom0less-arm32-gcc-gzip:
   extends: .qemu-arm32
@@ -376,7 +385,7 @@ qemu-smoke-dom0less-arm32-gcc-gzip:
     - ./automation/scripts/qemu-smoke-dom0less-arm32.sh gzip 2>&1 | tee ${LOGFILE}
   needs:
     - *arm32-test-needs
-    - debian-unstable-gcc-arm32
+    - debian-bookworm-gcc-arm32
 
 qemu-smoke-dom0less-arm32-gcc-debug-gzip:
   extends: .qemu-arm32
@@ -384,7 +393,7 @@ qemu-smoke-dom0less-arm32-gcc-debug-gzip:
     - ./automation/scripts/qemu-smoke-dom0less-arm32.sh gzip 2>&1 | tee ${LOGFILE}
   needs:
     - *arm32-test-needs
-    - debian-unstable-gcc-arm32-debug
+    - debian-bookworm-gcc-arm32-debug
 
 qemu-smoke-dom0less-arm32-gcc-without-dom0:
   extends: .qemu-arm32
@@ -392,7 +401,7 @@ qemu-smoke-dom0less-arm32-gcc-without-dom0:
     - ./automation/scripts/qemu-smoke-dom0less-arm32.sh without-dom0 2>&1 | tee ${LOGFILE}
   needs:
     - *arm32-test-needs
-    - debian-unstable-gcc-arm32
+    - debian-bookworm-gcc-arm32
 
 qemu-smoke-dom0less-arm32-gcc-debug-without-dom0:
   extends: .qemu-arm32
@@ -400,7 +409,7 @@ qemu-smoke-dom0less-arm32-gcc-debug-without-dom0:
     - ./automation/scripts/qemu-smoke-dom0less-arm32.sh without-dom0 2>&1 | tee ${LOGFILE}
   needs:
     - *arm32-test-needs
-    - debian-unstable-gcc-arm32-debug
+    - debian-bookworm-gcc-arm32-debug
 
 qemu-alpine-x86_64-gcc:
   extends: .qemu-x86-64
@@ -408,7 +417,7 @@ qemu-alpine-x86_64-gcc:
     - ./automation/scripts/qemu-alpine-x86_64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - *x86-64-test-needs
-    - alpine-3.12-gcc
+    - alpine-3.18-gcc
 
 qemu-smoke-x86-64-gcc:
   extends: .qemu-x86-64
@@ -422,7 +431,7 @@ qemu-smoke-x86-64-clang:
   script:
     - ./automation/scripts/qemu-smoke-x86-64.sh pv 2>&1 | tee ${LOGFILE}
   needs:
-    - debian-unstable-clang-debug
+    - debian-bookworm-clang-debug
 
 qemu-smoke-x86-64-gcc-pvh:
   extends: .qemu-x86-64
@@ -436,7 +445,7 @@ qemu-smoke-x86-64-clang-pvh:
   script:
     - ./automation/scripts/qemu-smoke-x86-64.sh pvh 2>&1 | tee ${LOGFILE}
   needs:
-    - debian-unstable-clang-debug
+    - debian-bookworm-clang-debug
 
 qemu-smoke-riscv64-gcc:
   extends: .qemu-riscv64
@@ -444,3 +453,11 @@ qemu-smoke-riscv64-gcc:
     - ./automation/scripts/qemu-smoke-riscv64.sh 2>&1 | tee ${LOGFILE}
   needs:
     - archlinux-current-gcc-riscv64-debug
+
+qemu-smoke-ppc64le-powernv9-gcc:
+  extends: .qemu-ppc64le
+  script:
+    - ./automation/scripts/qemu-smoke-ppc64le.sh powernv9 2>&1 | tee ${LOGFILE}
+  needs:
+    - qemu-system-ppc64-8.1.0-ppc64-export
+    - debian-bullseye-gcc-ppc64le-debug

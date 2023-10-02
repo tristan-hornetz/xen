@@ -174,7 +174,7 @@ struct guest_iommu {
 
     struct domain          *domain;
     spinlock_t              lock;
-    bool_t                  enabled;
+    bool                    enabled;
 
     struct guest_dev_table  dev_table;
     struct guest_buffer     cmd_buffer;
@@ -194,7 +194,7 @@ struct guest_iommu {
     struct guest_iommu_msi  msi;
 };
 
-extern bool_t iommuv2_enabled;
+extern bool iommuv2_enabled;
 
 struct acpi_ivrs_hardware;
 
@@ -248,7 +248,7 @@ int __must_check cf_check amd_iommu_unmap_page(
     struct domain *d, dfn_t dfn, unsigned int order,
     unsigned int *flush_flags);
 int __must_check amd_iommu_alloc_root(struct domain *d);
-int amd_iommu_reserve_domain_unity_map(struct domain *domain,
+int amd_iommu_reserve_domain_unity_map(struct domain *d,
                                        const struct ivrs_unity_map *map,
                                        unsigned int flag);
 int amd_iommu_reserve_domain_unity_unmap(struct domain *d,
@@ -282,7 +282,7 @@ void amd_iommu_flush_all_pages(struct domain *d);
 void amd_iommu_flush_pages(struct domain *d, unsigned long dfn,
                            unsigned int order);
 void amd_iommu_flush_iotlb(u8 devfn, const struct pci_dev *pdev,
-                           uint64_t gaddr, unsigned int order);
+                           daddr_t daddr, unsigned int order);
 void amd_iommu_flush_device(struct amd_iommu *iommu, uint16_t bdf);
 void amd_iommu_flush_intremap(struct amd_iommu *iommu, uint16_t bdf);
 void amd_iommu_flush_all_caches(struct amd_iommu *iommu);
@@ -300,7 +300,7 @@ int cf_check amd_iommu_free_intremap_table(
 unsigned int amd_iommu_intremap_table_order(
     const void *irt, const struct amd_iommu *iommu);
 void cf_check amd_iommu_ioapic_update_ire(
-    unsigned int apic, unsigned int reg, unsigned int value);
+    unsigned int apic, unsigned int pin, uint64_t rte);
 unsigned int cf_check amd_iommu_read_ioapic_from_ire(
     unsigned int apic, unsigned int reg);
 int cf_check amd_iommu_msi_msg_update_ire(

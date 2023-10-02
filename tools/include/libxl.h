@@ -81,6 +81,15 @@
  */
 #define LIBXL_HAVE_CONSOLE_NOTIFY_FD 1
 
+/* LIBXL_HAVE_CONSOLE_ESCAPE_CHARACTER
+ *
+ * If this is defined, libxl_console_exec and
+ * libxl_primary_console_exe take an escape_character parameter. That
+ * parameter will be used to modify the escape sequence used to exit the
+ * console.
+ */
+#define LIBXL_HAVE_CONSOLE_ESCAPE_CHARACTER 1
+
 /* LIBXL_HAVE_CONST_COPY_AND_LENGTH_FUNCTIONS
  *
  * If this is defined, the copy functions have constified src parameter and the
@@ -250,6 +259,12 @@
  */
 #define LIBXL_HAVE_DEVICETREE_PASSTHROUGH 1
 
+#if defined(__arm__) || defined(__aarch64__)
+/**
+ * This means Device Tree Overlay is supported.
+ */
+#define LIBXL_HAVE_DT_OVERLAY 1
+#endif
 /*
  * libxl_domain_build_info has device_model_user to specify the user to
  * run the device model with. See docs/misc/qemu-deprivilege.txt.
@@ -282,6 +297,11 @@
  * libxl_domain_build_info has the arch_arm.tee field.
  */
 #define LIBXL_HAVE_BUILDINFO_ARCH_ARM_TEE 1
+
+/*
+ * arch_arm.tee field in libxl_domain_build_info has ffa value.
+ */
+#define LIBXL_HAVE_BUILDINFO_ARCH_ARM_TEE_FFA 1
 
 /*
  * libxl_domain_build_info has the arch_arm.sve_vl field.
@@ -790,7 +810,8 @@ typedef struct libxl__ctx libxl_ctx;
 #if LIBXL_API_VERSION != 0x040200 && LIBXL_API_VERSION != 0x040300 && \
     LIBXL_API_VERSION != 0x040400 && LIBXL_API_VERSION != 0x040500 && \
     LIBXL_API_VERSION != 0x040700 && LIBXL_API_VERSION != 0x040800 && \
-    LIBXL_API_VERSION != 0x041300 && LIBXL_API_VERSION != 0x041400
+    LIBXL_API_VERSION != 0x041300 && LIBXL_API_VERSION != 0x041400 && \
+    LIBXL_API_VERSION != 0x041800
 #error Unknown LIBXL_API_VERSION
 #endif
 #endif
@@ -1455,12 +1476,8 @@ typedef struct {
 void libxl_bitmap_init(libxl_bitmap *map);
 void libxl_bitmap_dispose(libxl_bitmap *map);
 
-/*
- * libxl_cpuid_policy is opaque in the libxl ABI.  Users of both libxl and
- * libxc may not make assumptions about xc_xend_cpuid.
- */
-typedef struct xc_xend_cpuid libxl_cpuid_policy;
-typedef libxl_cpuid_policy * libxl_cpuid_policy_list;
+struct libxl__cpu_policy;
+typedef struct libxl__cpu_policy *libxl_cpuid_policy_list;
 void libxl_cpuid_dispose(libxl_cpuid_policy_list *cpuid_list);
 int libxl_cpuid_policy_list_length(const libxl_cpuid_policy_list *l);
 void libxl_cpuid_policy_list_copy(libxl_ctx *ctx,
@@ -1958,7 +1975,8 @@ int libxl_vncviewer_exec(libxl_ctx *ctx, uint32_t domid, int autopass);
  * the caller that it has connected to the guest console.
  */
 int libxl_console_exec(libxl_ctx *ctx, uint32_t domid, int cons_num,
-                       libxl_console_type type, int notify_fd);
+                       libxl_console_type type, int notify_fd,
+                       char* escape_character);
 /* libxl_primary_console_exec finds the domid and console number
  * corresponding to the primary console of the given vm, then calls
  * libxl_console_exec with the right arguments (domid might be different
@@ -1968,9 +1986,12 @@ int libxl_console_exec(libxl_ctx *ctx, uint32_t domid, int cons_num,
  * guests using pygrub.
  * If notify_fd is not -1, xenconsole will write 0x00 to it to nofity
  * the caller that it has connected to the guest console.
+ * If escape_character is not NULL, the provided value is used to exit
+ * the guest console.
  */
 int libxl_primary_console_exec(libxl_ctx *ctx, uint32_t domid_vm,
-                               int notify_fd);
+                               int notify_fd,
+                               char* escape_character);
 
 #if defined(LIBXL_API_VERSION) && LIBXL_API_VERSION < 0x040800
 
@@ -1978,16 +1999,35 @@ static inline int libxl_console_exec_0x040700(libxl_ctx *ctx,
                                               uint32_t domid, int cons_num,
                                               libxl_console_type type)
 {
-    return libxl_console_exec(ctx, domid, cons_num, type, -1);
+    return libxl_console_exec(ctx, domid, cons_num, type, -1, NULL);
 }
 #define libxl_console_exec libxl_console_exec_0x040700
 
 static inline int libxl_primary_console_exec_0x040700(libxl_ctx *ctx,
                                                       uint32_t domid_vm)
 {
-    return libxl_primary_console_exec(ctx, domid_vm, -1);
+    return libxl_primary_console_exec(ctx, domid_vm, -1, NULL);
 }
 #define libxl_primary_console_exec libxl_primary_console_exec_0x040700
+
+#elif defined(LIBXL_API_VERSION) && LIBXL_API_VERSION < 0x041800
+
+static inline int libxl_console_exec_0x041700(libxl_ctx *ctx, uint32_t domid,
+                                              int cons_num,
+                                              libxl_console_type type,
+                                              int notify_fd)
+{
+    return libxl_console_exec(ctx, domid, cons_num, type, notify_fd, NULL);
+}
+#define libxl_console_exec libxl_console_exec_0x041700
+
+static inline int libxl_primary_console_exec_0x041700(libxl_ctx *ctx,
+                                                      uint32_t domid_vm,
+                                                      int notify_fd)
+{
+    return libxl_primary_console_exec(ctx, domid_vm, notify_fd, NULL);
+}
+#define libxl_primary_console_exec libxl_primary_console_exec_0x041700
 
 #endif
 
@@ -2463,6 +2503,11 @@ int libxl_device_pci_destroy(libxl_ctx *ctx, uint32_t domid,
 libxl_device_pci *libxl_device_pci_list(libxl_ctx *ctx, uint32_t domid,
                                         int *num);
 void libxl_device_pci_list_free(libxl_device_pci* list, int num);
+
+#if defined(__arm__) || defined(__aarch64__)
+int libxl_dt_overlay(libxl_ctx *ctx, void *overlay,
+                     uint32_t overlay_size, uint8_t overlay_op);
+#endif
 
 /*
  * Turns the current process into a backend device service daemon

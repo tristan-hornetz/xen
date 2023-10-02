@@ -21,6 +21,7 @@ RUN zypper install -y --no-recommends \
         diffutils \
         discount \
         flex \
+        gawk \
         gcc \
         gcc-c++ \
         git \
@@ -62,6 +63,7 @@ RUN zypper install -y --no-recommends \
         'pkgconfig(sdl)' \
         'pkgconfig(sdl2)' \
         python3-devel \
+        python3-setuptools \
         systemd-devel \
         tar \
         transfig \

@@ -33,6 +33,7 @@
 #include <asm/shadow.h>
 #include <asm/hap.h>
 #include <asm/current.h>
+#include <asm/debugreg.h>
 #include <asm/e820.h>
 #include <asm/io.h>
 #include <asm/regs.h>
@@ -272,7 +273,7 @@ uint8_t hvm_combine_hw_exceptions(uint8_t vec1, uint8_t vec2)
     return X86_EXC_DF;
 }
 
-void hvm_set_rdtsc_exiting(struct domain *d, bool_t enable)
+void hvm_set_rdtsc_exiting(struct domain *d, bool enable)
 {
     struct vcpu *v;
 
@@ -280,7 +281,7 @@ void hvm_set_rdtsc_exiting(struct domain *d, bool_t enable)
         alternative_vcall(hvm_funcs.set_rdtsc_exiting, v, enable);
 }
 
-void hvm_get_guest_pat(struct vcpu *v, u64 *guest_pat)
+void hvm_get_guest_pat(struct vcpu *v, uint64_t *guest_pat)
 {
     if ( !alternative_call(hvm_funcs.get_guest_pat, v, guest_pat) )
         *guest_pat = v->arch.hvm.pat_cr;
@@ -294,7 +295,7 @@ void hvm_get_guest_pat(struct vcpu *v, u64 *guest_pat)
 static bool pat_valid(uint64_t val)
 {
     /* Yields a non-zero value in any lane which had value greater than 7. */
-    uint64_t any_gt_7   =  val & 0xf8f8f8f8f8f8f8f8ull;
+    uint64_t any_gt_7   =  val & 0xf8f8f8f8f8f8f8f8ULL;
 
     /*
      * With the > 7 case covered, identify lanes with the value 0-3 by finding
@@ -302,7 +303,7 @@ static bool pat_valid(uint64_t val)
      *
      * Yields bit 2 set in each lane which has a value <= 3.
      */
-    uint64_t any_le_3   = ~val & 0x0404040404040404ull;
+    uint64_t any_le_3   = ~val & 0x0404040404040404ULL;
 
     /*
      * Logically, any_2_or_3 is "any_le_3 && bit 1 set".
@@ -426,7 +427,7 @@ static void hvm_set_guest_tsc_adjust(struct vcpu *v, u64 tsc_adjust)
         update_vcpu_system_time(v);
 }
 
-u64 hvm_get_guest_tsc_fixed(struct vcpu *v, uint64_t at_tsc)
+uint64_t hvm_get_guest_tsc_fixed(struct vcpu *v, uint64_t at_tsc)
 {
     uint64_t tsc;
 
@@ -985,6 +986,7 @@ unsigned long hvm_cr4_guest_valid_bits(const struct domain *d)
 
 static int cf_check hvm_load_cpu_ctxt(struct domain *d, hvm_domain_context_t *h)
 {
+    const struct cpu_policy *p = d->arch.cpu_policy;
     unsigned int vcpuid = hvm_load_instance(h);
     struct vcpu *v;
     struct hvm_hw_cpu ctxt;
@@ -1029,6 +1031,14 @@ static int cf_check hvm_load_cpu_ctxt(struct domain *d, hvm_domain_context_t *h)
     {
         printk(XENLOG_G_ERR "%pv: HVM restore: bad EFER %#" PRIx64 " - %s\n",
                v, ctxt.msr_efer, errstr);
+        return -EINVAL;
+    }
+
+    if ( ctxt.dr6 != (uint32_t)ctxt.dr6 ||
+         ctxt.dr7 != (uint32_t)ctxt.dr7 )
+    {
+        printk(XENLOG_G_ERR "%pv: HVM restore: bad DR6 %#"PRIx64" or DR7 %#"PRIx64"\n",
+               v, ctxt.dr6, ctxt.dr7);
         return -EINVAL;
     }
 
@@ -1166,8 +1176,8 @@ static int cf_check hvm_load_cpu_ctxt(struct domain *d, hvm_domain_context_t *h)
     v->arch.dr[1] = ctxt.dr1;
     v->arch.dr[2] = ctxt.dr2;
     v->arch.dr[3] = ctxt.dr3;
-    v->arch.dr6   = ctxt.dr6;
-    v->arch.dr7   = ctxt.dr7;
+    v->arch.dr6   = x86_adj_dr6_rsvd(p, ctxt.dr6);
+    v->arch.dr7   = x86_adj_dr7_rsvd(p, ctxt.dr7);
 
     hvmemul_cancel(v);
 
@@ -3410,9 +3420,10 @@ static enum hvm_translation_result __hvm_copy(
 }
 
 enum hvm_translation_result hvm_copy_to_guest_phys(
-    paddr_t paddr, void *buf, unsigned int size, struct vcpu *v)
+    paddr_t paddr, const void *buf, unsigned int size, struct vcpu *v)
 {
-    return __hvm_copy(buf, paddr, size, v,
+    return __hvm_copy((void *)buf /* HVMCOPY_to_guest doesn't modify */,
+                      paddr, size, v,
                       HVMCOPY_to_guest | HVMCOPY_phys, 0, NULL);
 }
 
@@ -3424,11 +3435,11 @@ enum hvm_translation_result hvm_copy_from_guest_phys(
 }
 
 enum hvm_translation_result hvm_copy_to_guest_linear(
-    unsigned long addr, void *buf, unsigned int size, uint32_t pfec,
+    unsigned long addr, const void *buf, unsigned int size, uint32_t pfec,
     pagefault_info_t *pfinfo)
 {
-    return __hvm_copy(buf, addr, size, current,
-                      HVMCOPY_to_guest | HVMCOPY_linear,
+    return __hvm_copy((void *)buf /* HVMCOPY_to_guest doesn't modify */,
+                      addr, size, current, HVMCOPY_to_guest | HVMCOPY_linear,
                       PFEC_page_present | PFEC_write_access | pfec, pfinfo);
 }
 
@@ -3634,7 +3645,7 @@ int hvm_msr_read_intercept(unsigned int msr, uint64_t *msr_content)
 
  gp_fault:
     ret = X86EMUL_EXCEPTION;
-    *msr_content = -1ull;
+    *msr_content = -1ULL;
     goto out;
 }
 
@@ -3862,14 +3873,14 @@ void hvm_ud_intercept(struct cpu_user_regs *regs)
                                         cs, &addr) &&
              (hvm_copy_from_guest_linear(sig, addr, sizeof(sig),
                                          walk, NULL) == HVMTRANS_okay) &&
-             (memcmp(sig, "\xf\xbxen", sizeof(sig)) == 0) )
+             (memcmp(sig, "\xf\xb" "xen", sizeof(sig)) == 0) )
         {
             regs->rip += sizeof(sig);
             regs->eflags &= ~X86_EFLAGS_RF;
 
             /* Zero the upper 32 bits of %rip if not in 64bit mode. */
             if ( !(hvm_long_mode_active(cur) && cs->l) )
-                regs->rip = regs->eip;
+                regs->rip = (uint32_t)regs->rip;
 
             add_taint(TAINT_HVM_FEP);
 

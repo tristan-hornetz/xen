@@ -700,6 +700,7 @@ EXTRA_QEMUU_CONFIGURE_ARGS
 qemu_xen_systemd
 qemu_xen_path
 qemu_xen
+libfsimage
 rombios
 BCC
 LD86
@@ -707,6 +708,7 @@ AS86
 ipxe
 qemu_traditional
 LINUX_BACKEND_MODULES
+pygrub
 golang
 seabios
 ovmf
@@ -811,11 +813,13 @@ enable_xsmpolicy
 enable_ovmf
 enable_seabios
 enable_golang
+enable_pygrub
 with_linux_backend_modules
 enable_qemu_traditional
 enable_ipxe
 with_system_ipxe
 enable_rombios
+enable_libfsimage
 with_system_qemu
 with_stubdom_qmp_proxy
 with_system_seabios
@@ -1498,6 +1502,7 @@ Optional Features:
   --enable-ovmf           Enable OVMF (default is DISABLED)
   --disable-seabios       Disable SeaBIOS (default is ENABLED)
   --disable-golang        Disable Go tools (default is ENABLED)
+  --disable-pygrub        Disable pygrub (default is ENABLED)
   --enable-qemu-traditional
                           Enable qemu traditional device model, (DEFAULT is
                           off)
@@ -1505,6 +1510,8 @@ Optional Features:
                           --with-system-ipxe)
   --enable-rombios        Enable ROMBIOS, (DEFAULT is on if qemu-traditional
                           or ipxe is enabled, otherwise off)
+  --enable-libfsimage     Enable libfsimage, (DEFAULT is on if pygrub is
+                          enabled, otherwise off)
   --enable-systemd        Enable systemd support (default is DISABLED)
   --enable-9pfs           Explicitly enable 9pfs support in QEMU build
                           (default is to defer to QEMU configure default)
@@ -4060,6 +4067,11 @@ _ACEOF
 XEN_RUN_STORED=$rundir_path/xenstored
 
 
+cat >>confdefs.h <<_ACEOF
+#define XEN_RUN_STORED "$XEN_RUN_STORED"
+_ACEOF
+
+
 XEN_LIB_DIR=$localstatedir/lib/xen
 
 
@@ -4284,6 +4296,29 @@ elif test -z $ax_cv_golang; then :
 
 fi
 golang=$ax_cv_golang
+
+
+
+# Check whether --enable-pygrub was given.
+if test "${enable_pygrub+set}" = set; then :
+  enableval=$enable_pygrub;
+fi
+
+
+if test "x$enable_pygrub" = "xno"; then :
+
+    ax_cv_pygrub="n"
+
+elif test "x$enable_pygrub" = "xyes"; then :
+
+    ax_cv_pygrub="y"
+
+elif test -z $ax_cv_pygrub; then :
+
+    ax_cv_pygrub="y"
+
+fi
+pygrub=$ax_cv_pygrub
 
 
 
@@ -4591,6 +4626,50 @@ $as_echo "#define HAVE_ROMBIOS 1" >>confdefs.h
 else
 
     rombios=n
+
+fi
+
+
+if test "x$pygrub" = "xy"; then :
+
+
+$as_echo "#define HAVE_PYGRUB 1" >>confdefs.h
+
+
+fi
+
+# Check whether --enable-libfsimage was given.
+if test "${enable_libfsimage+set}" = set; then :
+  enableval=$enable_libfsimage;
+else
+
+    if test "x$pygrub" = "xn"; then :
+
+        enable_libfsimage="no"
+
+else
+
+        enable_libfsimage="yes"
+
+fi
+
+fi
+
+if test "x$enable_libfsimage" = "xyes"; then :
+
+    libfsimage=y
+
+else
+
+    if test "x$pygrub" = "xy"; then :
+
+        as_fn_error $? "pygrub needs libfsimage" "$LINENO" 5
+
+else
+
+        libfsimage=n
+
+fi
 
 fi
 
@@ -7773,21 +7852,21 @@ fi
 
 if test x"$pyconfig" = x"no"; then :
 
-        CPPFLAGS="$CFLAGS `$PYTHON -c 'import distutils.sysconfig; \
-        print("-I" + distutils.sysconfig.get_config_var("INCLUDEPY"))'`"
-    CPPFLAGS="$CPPFLAGS `$PYTHON -c 'import distutils.sysconfig; \
-        print(distutils.sysconfig.get_config_var("CFLAGS"))'`"
-    LDFLAGS="$LDFLAGS `$PYTHON -c 'import distutils.sysconfig; \
-        print("-L" + distutils.sysconfig.get_python_lib(plat_specific=1,\
+        CPPFLAGS="$CFLAGS `$PYTHON -c 'import sysconfig; \
+        print("-I" + sysconfig.get_config_var("INCLUDEPY"))'`"
+    CPPFLAGS="$CPPFLAGS `$PYTHON -c 'import sysconfig; \
+        print(sysconfig.get_config_var("CFLAGS"))'`"
+    LDFLAGS="$LDFLAGS `$PYTHON -c 'import sysconfig; \
+        print("-L" + sysconfig.get_python_lib(plat_specific=1,\
         standard_lib=1) + "/config")'`"
-    LDFLAGS="$LDFLAGS `$PYTHON -c 'import distutils.sysconfig; \
-        print(distutils.sysconfig.get_config_var("LINKFORSHARED"))'`"
-    LDFLAGS="$LDFLAGS `$PYTHON -c 'import distutils.sysconfig; \
-        print(distutils.sysconfig.get_config_var("LDFLAGS"))'`"
-    LIBS="$LIBS `$PYTHON -c 'import distutils.sysconfig; \
-        print(distutils.sysconfig.get_config_var("LIBS"))'`"
-    LIBS="$LIBS `$PYTHON -c 'import distutils.sysconfig; \
-        print(distutils.sysconfig.get_config_var("SYSLIBS"))'`"
+    LDFLAGS="$LDFLAGS `$PYTHON -c 'import sysconfig; \
+        print(sysconfig.get_config_var("LINKFORSHARED"))'`"
+    LDFLAGS="$LDFLAGS `$PYTHON -c 'import sysconfig; \
+        print(sysconfig.get_config_var("LDFLAGS"))'`"
+    LIBS="$LIBS `$PYTHON -c 'import sysconfig; \
+        print(sysconfig.get_config_var("LIBS"))'`"
+    LIBS="$LIBS `$PYTHON -c 'import sysconfig; \
+        print(sysconfig.get_config_var("SYSLIBS"))'`"
 
 else
 

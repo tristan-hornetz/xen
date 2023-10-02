@@ -39,6 +39,9 @@
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
+/* pygrub enabled */
+#undef HAVE_PYGRUB
+
 /* Qemu traditional enabled */
 #undef HAVE_QEMU_TRADITIONAL
 
@@ -149,6 +152,9 @@
 
 /* Xen's runstate path */
 #undef XEN_RUN_DIR
+
+/* Xenstore's runstate path */
+#undef XEN_RUN_STORED
 
 /* Xen's script dir */
 #undef XEN_SCRIPT_DIR

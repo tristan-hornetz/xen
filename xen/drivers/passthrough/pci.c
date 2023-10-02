@@ -62,7 +62,7 @@ void pcidevs_unlock(void)
     spin_unlock_recursive(&_pcidevs_lock);
 }
 
-bool_t pcidevs_locked(void)
+bool pcidevs_locked(void)
 {
     return !!spin_is_locked(&_pcidevs_lock);
 }
@@ -74,7 +74,7 @@ static inline struct pci_seg *get_pseg(u16 seg)
     return radix_tree_lookup(&pci_segments, seg);
 }
 
-bool_t pci_known_segment(u16 seg)
+bool pci_known_segment(u16 seg)
 {
     return get_pseg(seg) != NULL;
 }
@@ -361,8 +361,7 @@ static struct pci_dev *alloc_pdev(struct pci_seg *pseg, u8 bus, u8 devfn)
             break;
 
         case DEV_TYPE_PCIe_ENDPOINT:
-            pos = pci_find_cap_offset(pseg->nr, bus, PCI_SLOT(devfn),
-                                      PCI_FUNC(devfn), PCI_CAP_ID_EXP);
+            pos = pci_find_cap_offset(pdev->sbdf, PCI_CAP_ID_EXP);
             BUG_ON(!pos);
             cap = pci_conf_read16(pdev->sbdf, pos + PCI_EXP_DEVCAP);
             if ( cap & PCI_EXP_DEVCAP_PHANTOM )
@@ -565,13 +564,12 @@ struct pci_dev *pci_get_pdev(const struct domain *d, pci_sbdf_t sbdf)
 static void pci_enable_acs(struct pci_dev *pdev)
 {
     int pos;
-    u16 cap, ctrl, seg = pdev->seg;
-    u8 bus = pdev->bus;
+    uint16_t cap, ctrl;
 
     if ( !is_iommu_enabled(pdev->domain) )
         return;
 
-    pos = pci_find_ext_capability(seg, bus, pdev->devfn, PCI_EXT_CAP_ID_ACS);
+    pos = pci_find_ext_capability(pdev->sbdf, PCI_EXT_CAP_ID_ACS);
     if (!pos)
         return;
 
@@ -650,12 +648,12 @@ int pci_add_device(u16 seg, u8 bus, u8 devfn,
     struct pci_seg *pseg;
     struct pci_dev *pdev;
     unsigned int slot = PCI_SLOT(devfn), func = PCI_FUNC(devfn);
-    const char *pdev_type;
+    const char *type;
     int ret;
     bool pf_is_extfn = false;
 
     if ( !info )
-        pdev_type = "device";
+        type = "device";
     else if ( info->is_virtfn )
     {
         pcidevs_lock();
@@ -668,12 +666,12 @@ int pci_add_device(u16 seg, u8 bus, u8 devfn,
         if ( !pdev )
             pci_add_device(seg, info->physfn.bus, info->physfn.devfn,
                            NULL, node);
-        pdev_type = "virtual function";
+        type = "virtual function";
     }
     else if ( info->is_extfn )
-        pdev_type = "extended function";
+        type = "extended function";
     else
-        pdev_type = "device";
+        type = "device";
 
     ret = xsm_resource_plug_pci(XSM_PRIV, (seg << 16) | (bus << 8) | devfn);
     if ( ret )
@@ -704,7 +702,7 @@ int pci_add_device(u16 seg, u8 bus, u8 devfn,
 
     if ( !pdev->info.is_virtfn && !pdev->vf_rlen[0] )
     {
-        unsigned int pos = pci_find_ext_capability(seg, bus, devfn,
+        unsigned int pos = pci_find_ext_capability(pdev->sbdf,
                                                    PCI_EXT_CAP_ID_SRIOV);
         uint16_t ctrl = pci_conf_read16(pdev->sbdf, pos + PCI_SRIOV_CTRL);
 
@@ -780,7 +778,7 @@ out:
     pcidevs_unlock();
     if ( !ret )
     {
-        printk(XENLOG_DEBUG "PCI add %s %pp\n", pdev_type,  &pdev->sbdf);
+        printk(XENLOG_DEBUG "PCI add %s %pp\n", type, &pdev->sbdf);
         while ( pdev->phantom_stride )
         {
             func += pdev->phantom_stride;
@@ -916,7 +914,8 @@ enum pdev_type pdev_type(u16 seg, u8 bus, u8 devfn)
 {
     u16 class_device, creg;
     u8 d = PCI_SLOT(devfn), f = PCI_FUNC(devfn);
-    int pos = pci_find_cap_offset(seg, bus, d, f, PCI_CAP_ID_EXP);
+    unsigned int pos = pci_find_cap_offset(PCI_SBDF(seg, bus, devfn),
+                                           PCI_CAP_ID_EXP);
 
     class_device = pci_conf_read16(PCI_SBDF(seg, bus, d, f), PCI_CLASS_DEVICE);
     switch ( class_device )
@@ -984,7 +983,7 @@ out:
     return ret;
 }
 
-bool_t __init pci_device_detect(u16 seg, u8 bus, u8 dev, u8 func)
+bool __init pci_device_detect(u16 seg, u8 bus, u8 dev, u8 func)
 {
     u32 vendor;
 
@@ -1181,13 +1180,10 @@ static int hest_match_pci(const struct acpi_hest_aer_common *p,
            p->function               == PCI_FUNC(pdev->devfn);
 }
 
-static bool_t hest_match_type(const struct acpi_hest_header *hest_hdr,
+static bool hest_match_type(const struct acpi_hest_header *hest_hdr,
                               const struct pci_dev *pdev)
 {
-    unsigned int pos = pci_find_cap_offset(pdev->seg, pdev->bus,
-                                           PCI_SLOT(pdev->devfn),
-                                           PCI_FUNC(pdev->devfn),
-                                           PCI_CAP_ID_EXP);
+    unsigned int pos = pci_find_cap_offset(pdev->sbdf, PCI_CAP_ID_EXP);
     u8 pcie = MASK_EXTR(pci_conf_read16(pdev->sbdf, pos + PCI_EXP_FLAGS),
                         PCI_EXP_FLAGS_TYPE);
 
@@ -1207,10 +1203,10 @@ static bool_t hest_match_type(const struct acpi_hest_header *hest_hdr,
 
 struct aer_hest_parse_info {
     const struct pci_dev *pdev;
-    bool_t firmware_first;
+    bool firmware_first;
 };
 
-static bool_t hest_source_is_pcie_aer(const struct acpi_hest_header *hest_hdr)
+static bool hest_source_is_pcie_aer(const struct acpi_hest_header *hest_hdr)
 {
     if ( hest_hdr->type == ACPI_HEST_TYPE_AER_ROOT_PORT ||
          hest_hdr->type == ACPI_HEST_TYPE_AER_ENDPOINT ||
@@ -1224,7 +1220,7 @@ static int cf_check aer_hest_parse(
 {
     struct aer_hest_parse_info *info = data;
     const struct acpi_hest_aer_common *p;
-    bool_t ff;
+    bool ff;
 
     if ( !hest_source_is_pcie_aer(hest_hdr) )
         return 0;
@@ -1254,12 +1250,11 @@ static int cf_check aer_hest_parse(
     return 0;
 }
 
-bool_t pcie_aer_get_firmware_first(const struct pci_dev *pdev)
+bool pcie_aer_get_firmware_first(const struct pci_dev *pdev)
 {
     struct aer_hest_parse_info info = { .pdev = pdev };
 
-    return pci_find_cap_offset(pdev->seg, pdev->bus, PCI_SLOT(pdev->devfn),
-                               PCI_FUNC(pdev->devfn), PCI_CAP_ID_EXP) &&
+    return pci_find_cap_offset(pdev->sbdf, PCI_CAP_ID_EXP) &&
            apei_hest_parse(aer_hest_parse, &info) >= 0 &&
            info.firmware_first;
 }

@@ -221,7 +221,7 @@ int xc_get_cpufreq_para(xc_interface *xch, int cpuid,
     {
         if ( (!user_para->affected_cpus)                    ||
              (!user_para->scaling_available_frequencies)    ||
-             (!user_para->scaling_available_governors) )
+             (user_para->gov_num && !user_para->scaling_available_governors) )
         {
             errno = EINVAL;
             return -1;
@@ -230,12 +230,15 @@ int xc_get_cpufreq_para(xc_interface *xch, int cpuid,
             goto unlock_1;
         if ( xc_hypercall_bounce_pre(xch, scaling_available_frequencies) )
             goto unlock_2;
-        if ( xc_hypercall_bounce_pre(xch, scaling_available_governors) )
+        if ( user_para->gov_num &&
+             xc_hypercall_bounce_pre(xch, scaling_available_governors) )
             goto unlock_3;
 
         set_xen_guest_handle(sys_para->affected_cpus, affected_cpus);
         set_xen_guest_handle(sys_para->scaling_available_frequencies, scaling_available_frequencies);
-        set_xen_guest_handle(sys_para->scaling_available_governors, scaling_available_governors);
+        if ( user_para->gov_num )
+            set_xen_guest_handle(sys_para->scaling_available_governors,
+                                 scaling_available_governors);
     }
 
     sysctl.cmd = XEN_SYSCTL_pm_op;
@@ -265,25 +268,38 @@ int xc_get_cpufreq_para(xc_interface *xch, int cpuid,
         user_para->cpuinfo_cur_freq = sys_para->cpuinfo_cur_freq;
         user_para->cpuinfo_max_freq = sys_para->cpuinfo_max_freq;
         user_para->cpuinfo_min_freq = sys_para->cpuinfo_min_freq;
-        user_para->scaling_cur_freq = sys_para->scaling_cur_freq;
-        user_para->scaling_max_freq = sys_para->scaling_max_freq;
-        user_para->scaling_min_freq = sys_para->scaling_min_freq;
         user_para->turbo_enabled    = sys_para->turbo_enabled;
 
         memcpy(user_para->scaling_driver,
                 sys_para->scaling_driver, CPUFREQ_NAME_LEN);
-        memcpy(user_para->scaling_governor,
-                sys_para->scaling_governor, CPUFREQ_NAME_LEN);
 
-        /* copy to user_para no matter what cpufreq governor */
-        BUILD_BUG_ON(sizeof(((struct xc_get_cpufreq_para *)0)->u) !=
-		     sizeof(((struct xen_get_cpufreq_para *)0)->u));
+        /*
+         * Copy to user_para no matter what cpufreq driver/governor.
+         *
+         * First sanity check layout of the union subject to memcpy() below.
+         */
+        BUILD_BUG_ON(sizeof(user_para->u) != sizeof(sys_para->u));
+
+#define CHK_FIELD(fld) \
+        BUILD_BUG_ON(offsetof(typeof(user_para->u), fld) != \
+                     offsetof(typeof(sys_para->u),  fld))
+
+        CHK_FIELD(s.scaling_cur_freq);
+        CHK_FIELD(s.scaling_governor);
+        CHK_FIELD(s.scaling_max_freq);
+        CHK_FIELD(s.scaling_min_freq);
+        CHK_FIELD(s.u.userspace);
+        CHK_FIELD(s.u.ondemand);
+        CHK_FIELD(cppc_para);
+
+#undef CHK_FIELD
 
         memcpy(&user_para->u, &sys_para->u, sizeof(sys_para->u));
     }
 
 unlock_4:
-    xc_hypercall_bounce_post(xch, scaling_available_governors);
+    if ( user_para->gov_num )
+        xc_hypercall_bounce_post(xch, scaling_available_governors);
 unlock_3:
     xc_hypercall_bounce_post(xch, scaling_available_frequencies);
 unlock_2:
@@ -328,6 +344,29 @@ int xc_set_cpufreq_para(xc_interface *xch, int cpuid,
     sysctl.u.pm_op.u.set_para.ctrl_value = ctrl_value;
 
     return xc_sysctl(xch, &sysctl);
+}
+
+int xc_set_cpufreq_cppc(xc_interface *xch, int cpuid,
+                        xc_set_cppc_para_t *set_cppc)
+{
+    DECLARE_SYSCTL;
+    int ret;
+
+    if ( !xch )
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    sysctl.cmd = XEN_SYSCTL_pm_op;
+    sysctl.u.pm_op.cmd = SET_CPUFREQ_CPPC;
+    sysctl.u.pm_op.cpuid = cpuid;
+    sysctl.u.pm_op.u.set_cppc = *set_cppc;
+
+    ret = xc_sysctl(xch, &sysctl);
+
+    *set_cppc = sysctl.u.pm_op.u.set_cppc;
+
+    return ret;
 }
 
 int xc_get_cpufreq_avgfreq(xc_interface *xch, int cpuid, int *avg_freq)

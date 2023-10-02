@@ -15,25 +15,12 @@ PHDRS
 #endif
 }
 
-/**
- * OpenFirmware's base load address is 0x400000 (XEN_VIRT_START).
- * By defining sections this way, we can keep our virtual address base at 0x400000
- * while keeping the physical base at 0x0.
- *
- * Otherwise, OpenFirmware incorrectly loads .text at 0x400000 + 0x400000 = 0x800000.
- * Taken from x86/xen.lds.S
- */
-#ifdef CONFIG_LD_IS_GNU
-# define DECL_SECTION(x) x : AT(ADDR(#x) - XEN_VIRT_START)
-#else
-# define DECL_SECTION(x) x : AT(ADDR(x) - XEN_VIRT_START)
-#endif
-
 SECTIONS
 {
     . = XEN_VIRT_START;
+    _start = .;
 
-    DECL_SECTION(.text) {
+    .text : {
         _stext = .;            /* Text section */
         *(.text.header)
 
@@ -52,8 +39,18 @@ SECTIONS
     } :text
 
     . = ALIGN(PAGE_SIZE);
-    DECL_SECTION(.rodata) {
+    .rodata : {
         _srodata = .;          /* Read-only data */
+        /* Bug frames table */
+        __start_bug_frames = .;
+        *(.bug_frames.0)
+        __stop_bug_frames_0 = .;
+        *(.bug_frames.1)
+        __stop_bug_frames_1 = .;
+        *(.bug_frames.2)
+        __stop_bug_frames_2 = .;
+        *(.bug_frames.3)
+        __stop_bug_frames_3 = .;
         *(.rodata)
         *(.rodata.*)
         *(.data.rel.ro)
@@ -67,7 +64,7 @@ SECTIONS
 
     #if defined(BUILD_ID)
     . = ALIGN(4);
-    DECL_SECTION(.note.gnu.build-id) {
+    .note.gnu.build-id : {
         __note_gnu_build_id_start = .;
         *(.note.gnu.build-id)
         __note_gnu_build_id_end = .;
@@ -76,19 +73,19 @@ SECTIONS
     _erodata = .;                /* End of read-only data */
 
     . = ALIGN(PAGE_SIZE);
-    DECL_SECTION(.data.ro_after_init) {
+    .data.ro_after_init : {
         __ro_after_init_start = .;
         *(.data.ro_after_init)
         . = ALIGN(PAGE_SIZE);
         __ro_after_init_end = .;
-    } : text
+    } :text
 
-    DECL_SECTION(.data.read_mostly) {
+    .data.read_mostly : {
         *(.data.read_mostly)
     } :text
 
     . = ALIGN(PAGE_SIZE);
-    DECL_SECTION(.data) {                    /* Data */
+    .data : {                    /* Data */
         *(.data.page_aligned)
         . = ALIGN(8);
         __start_schedulers_array = .;
@@ -103,7 +100,7 @@ SECTIONS
 
     . = ALIGN(PAGE_SIZE);             /* Init code and data */
     __init_begin = .;
-    DECL_SECTION(.init.text) {
+    .init.text : {
         _sinittext = .;
         *(.init.text)
         _einittext = .;
@@ -111,7 +108,7 @@ SECTIONS
     } :text
 
     . = ALIGN(PAGE_SIZE);
-    DECL_SECTION(.init.data) {
+    .init.data : {
         *(.init.rodata)
         *(.init.rodata.*)
 
@@ -140,18 +137,18 @@ SECTIONS
         __ctors_end = .;
     } :text
 
-    DECL_SECTION(.got) {
-        *(.got)
+    .got : {
+        *(.got .toc)
     } :text
 
-    DECL_SECTION(.got.plt) {
+    .got.plt : {
         *(.got.plt)
     } :text
 
     . = ALIGN(POINTER_ALIGN);
     __init_end = .;
 
-    DECL_SECTION(.bss) {                     /* BSS */
+    .bss : {                     /* BSS */
         __bss_start = .;
         *(.bss.stack_aligned)
         *(.bss.page_aligned)
@@ -167,10 +164,11 @@ SECTIONS
         . = ALIGN(POINTER_ALIGN);
         __bss_end = .;
     } :text
+
     _end = . ;
 
     /* Section for the device tree blob (if any). */
-    DECL_SECTION(.dtb) { *(.dtb) } :text
+    .dtb : { *(.dtb) } :text
 
     DWARF2_DEBUG_SECTIONS
 

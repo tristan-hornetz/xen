@@ -103,7 +103,7 @@ static void cf_check address_write(
     struct vpci_msi *msi = data;
 
     /* Clear low part. */
-    msi->address &= ~0xffffffffull;
+    msi->address &= ~0xffffffffULL;
     msi->address |= val;
 
     update_msi(pdev, msi);
@@ -124,7 +124,7 @@ static void cf_check address_hi_write(
     struct vpci_msi *msi = data;
 
     /* Clear and update high part. */
-    msi->address &= 0xffffffff;
+    msi->address  = (uint32_t)msi->address;
     msi->address |= (uint64_t)val << 32;
 
     update_msi(pdev, msi);
@@ -184,9 +184,7 @@ static void cf_check mask_write(
 
 static int cf_check init_msi(struct pci_dev *pdev)
 {
-    uint8_t slot = PCI_SLOT(pdev->devfn), func = PCI_FUNC(pdev->devfn);
-    unsigned int pos = pci_find_cap_offset(pdev->seg, pdev->bus, slot, func,
-                                           PCI_CAP_ID_MSI);
+    unsigned int pos = pci_find_cap_offset(pdev->sbdf, PCI_CAP_ID_MSI);
     uint16_t control;
     int ret;
 

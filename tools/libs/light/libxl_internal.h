@@ -4869,6 +4869,11 @@ int libxl__setresuid(uid_t ruid, uid_t euid, uid_t suid);
 _hidden int libxl__domain_set_paging_mempool_size(
     libxl__gc *gc, libxl_domain_config *d_config, uint32_t domid);
 
+struct libxl__cpu_policy {
+    struct xc_xend_cpuid *cpuid;
+    struct xc_msr *msr;
+};
+
 #endif
 
 /*

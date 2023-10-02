@@ -503,8 +503,8 @@ static inline void put_loop_count(
         if ( mode_64bit() && ad_bytes == 4 )                            \
         {                                                               \
             _regs.r(cx) = 0;                                            \
-            if ( using_si ) _regs.r(si) = _regs.esi;                    \
-            if ( using_di ) _regs.r(di) = _regs.edi;                    \
+            if ( using_si ) _regs.r(si) = (uint32_t)_regs.r(si);        \
+            if ( using_di ) _regs.r(di) = (uint32_t)_regs.r(di);        \
         }                                                               \
         goto complete_insn;                                             \
     }                                                                   \
@@ -1483,7 +1483,7 @@ x86_emulate(
     {
         enum x86_segment seg;
         struct segment_register cs, sreg;
-        struct cpuid_leaf cpuid_leaf;
+        struct cpuid_leaf leaf;
         uint64_t msr_val;
         unsigned int i, n;
         unsigned long dummy;
@@ -1984,9 +1984,9 @@ x86_emulate(
     case 0x98: /* cbw/cwde/cdqe */
         switch ( op_bytes )
         {
-        case 2: _regs.ax = (int8_t)_regs.al; break; /* cbw */
+        case 2: _regs.ax = (int8_t)_regs.ax; break; /* cbw */
         case 4: _regs.r(ax) = (uint32_t)(int16_t)_regs.ax; break; /* cwde */
-        case 8: _regs.r(ax) = (int32_t)_regs.eax; break; /* cdqe */
+        case 8: _regs.r(ax) = (int32_t)_regs.r(ax); break; /* cdqe */
         }
         break;
 
@@ -5024,13 +5024,13 @@ x86_emulate(
         generate_exception_if((msr_val & MSR_MISC_FEATURES_CPUID_FAULTING),
                               X86_EXC_GP, 0); /* Faulting active? (Inc. CPL test) */
 
-        rc = ops->cpuid(_regs.eax, _regs.ecx, &cpuid_leaf, ctxt);
+        rc = ops->cpuid(_regs.eax, _regs.ecx, &leaf, ctxt);
         if ( rc != X86EMUL_OKAY )
             goto done;
-        _regs.r(ax) = cpuid_leaf.a;
-        _regs.r(bx) = cpuid_leaf.b;
-        _regs.r(cx) = cpuid_leaf.c;
-        _regs.r(dx) = cpuid_leaf.d;
+        _regs.r(ax) = leaf.a;
+        _regs.r(bx) = leaf.b;
+        _regs.r(cx) = leaf.c;
+        _regs.r(dx) = leaf.d;
         break;
 
     case X86EMUL_OPC(0x0f, 0xa3): bt: /* bt */
@@ -8377,7 +8377,7 @@ x86_emulate(
 
     /* Zero the upper 32 bits of %rip if not in 64-bit mode. */
     if ( !mode_64bit() )
-        _regs.r(ip) = _regs.eip;
+        _regs.r(ip) = (uint32_t)_regs.r(ip);
 
     /* Should a singlestep #DB be raised? */
     if ( rc == X86EMUL_OKAY && singlestep && !ctxt->retire.mov_ss )
@@ -8408,8 +8408,6 @@ x86_emulate(
         generate_exception(X86_EXC_MF);
     if ( stub_exn.info.fields.trapnr == X86_EXC_XM )
     {
-        unsigned long cr4;
-
         if ( !ops->read_cr || ops->read_cr(4, &cr4, ctxt) != X86EMUL_OKAY )
             cr4 = X86_CR4_OSXMMEXCPT;
         generate_exception(cr4 & X86_CR4_OSXMMEXCPT ? X86_EXC_XM : X86_EXC_UD);
@@ -8652,6 +8650,12 @@ int x86_emulate_wrapper(
 #endif
 
     rc = x86_emulate(ctxt, ops);
+
+    /*
+     * X86EMUL_DONE is an internal signal in the emulator, and is not expected
+     * to ever escape out to callers.
+     */
+    ASSERT(rc != X86EMUL_DONE);
 
     /*
      * Most retire flags should only be set for successful instruction

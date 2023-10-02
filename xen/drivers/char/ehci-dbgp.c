@@ -424,9 +424,7 @@ static void dbgp_issue_command(struct ehci_dbgp *dbgp, u32 ctrl,
          * checks to see if ACPI or some other initialization also
          * reset the EHCI debug port.
          */
-        u32 ctrl = readl(&dbgp->ehci_debug->control);
-
-        if ( ctrl & DBGP_ENABLED )
+        if ( readl(&dbgp->ehci_debug->control) & DBGP_ENABLED )
         {
             cmd |= CMD_RUN;
             writel(cmd, &dbgp->ehci_regs->command);
@@ -689,7 +687,8 @@ static unsigned int __init __find_dbgp(u8 bus, u8 slot, u8 func)
     if ( (class >> 8) != PCI_CLASS_SERIAL_USB_EHCI )
         return 0;
 
-    return pci_find_cap_offset(0, bus, slot, func, PCI_CAP_ID_EHCI_DEBUG);
+    return pci_find_cap_offset(PCI_SBDF(0, bus, slot, func),
+                               PCI_CAP_ID_EHCI_DEBUG);
 }
 
 static unsigned int __init find_dbgp(struct ehci_dbgp *dbgp,

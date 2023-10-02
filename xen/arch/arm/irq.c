@@ -58,7 +58,7 @@ hw_irq_controller no_irq_type = {
 static irq_desc_t irq_desc[NR_IRQS];
 static DEFINE_PER_CPU(irq_desc_t[NR_LOCAL_IRQS], local_irq_desc);
 
-irq_desc_t *__irq_to_desc(int irq)
+struct irq_desc *__irq_to_desc(int irq)
 {
     if ( irq < NR_LOCAL_IRQS )
         return &this_cpu(local_irq_desc)[irq];
@@ -175,10 +175,10 @@ static inline struct domain *irq_get_domain(struct irq_desc *desc)
     return irq_get_guest_info(desc)->d;
 }
 
-void irq_set_affinity(struct irq_desc *desc, const cpumask_t *cpu_mask)
+void irq_set_affinity(struct irq_desc *desc, const cpumask_t *mask)
 {
     if ( desc != NULL )
-        desc->handler->set_affinity(desc, cpu_mask);
+        desc->handler->set_affinity(desc, mask);
 }
 
 int request_irq(unsigned int irq, unsigned int irqflags,

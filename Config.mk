@@ -19,13 +19,17 @@ or       = $(if $(strip $(1)),$(1),$(if $(strip $(2)),$(2),$(if $(strip $(3)),$(
 
 -include $(XEN_ROOT)/.config
 
-XEN_COMPILE_ARCH    ?= $(shell uname -m | sed -e s/i.86/x86_32/ \
+ifeq ($(origin XEN_COMPILE_ARCH), undefined)
+XEN_COMPILE_ARCH    := $(shell uname -m | sed -e s/i.86/x86_32/ \
                          -e s/i86pc/x86_32/ -e s/amd64/x86_64/ \
                          -e s/armv7.*/arm32/ -e s/armv8.*/arm64/ \
                          -e s/aarch64/arm64/)
+endif
 
 XEN_TARGET_ARCH     ?= $(XEN_COMPILE_ARCH)
-XEN_OS              ?= $(shell uname -s)
+ifeq ($(origin XEN_OS), undefined)
+XEN_OS              := $(shell uname -s)
+endif
 
 CONFIG_$(XEN_OS) := y
 
@@ -81,17 +85,17 @@ PYTHON_PREFIX_ARG ?= --prefix="$(prefix)"
 
 # cc-option: Check if compiler supports first option, else fall back to second.
 #
-# This is complicated by the fact that unrecognised -Wno-* options:
+# This is complicated by the fact that with most gcc versions unrecognised
+# -Wno-* options:
 #   (a) are ignored unless the compilation emits a warning; and
 #   (b) even then produce a warning rather than an error
-# To handle this we do a test compile, passing the option-under-test, on a code
-# fragment that will always produce a warning (integer assigned to pointer).
-# We then grep for the option-under-test in the compiler's output, the presence
-# of which would indicate an "unrecognized command-line option" warning/error.
+# Further Clang also only warns for unrecognised -W* options.  To handle this
+# we do a test compile, substituting -Wno-* by -W* and adding -Werror.  This
+# way all unrecognised options are diagnosed uniformly, allowing us to merely
+# check exit status.
 #
 # Usage: cflags-y += $(call cc-option,$(CC),-march=winchip-c6,-march=i586)
-cc-option = $(shell if test -z "`echo 'void*p=1;' | \
-              $(1) $(2) -c -o /dev/null -x c - 2>&1 | grep -- $(2:-Wa$(comma)%=%) -`"; \
+cc-option = $(shell if $(1) $(2:-Wno-%=-W%) -Werror -c -o /dev/null -x c /dev/null >/dev/null 2>&1; \
               then echo "$(2)"; else echo "$(3)"; fi ;)
 
 # cc-option-add: Add an option to compilation flags, but only if supported.
@@ -219,7 +223,7 @@ OVMF_UPSTREAM_URL ?= https://xenbits.xen.org/git-http/ovmf.git
 OVMF_UPSTREAM_REVISION ?= ba91d0292e593df8528b66f99c1b0b14fadc8e16
 
 QEMU_UPSTREAM_URL ?= https://xenbits.xen.org/git-http/qemu-xen.git
-QEMU_UPSTREAM_REVISION ?= master
+QEMU_UPSTREAM_REVISION ?= 0df9387c8983e1b1e72d8c574356f572342c03e6
 
 MINIOS_UPSTREAM_URL ?= https://xenbits.xen.org/git-http/mini-os.git
 MINIOS_UPSTREAM_REVISION ?= 5bcb28aaeba1c2506a82fab0cdad0201cd9b54b3

@@ -158,9 +158,9 @@ int iommu_enable_x2apic(void)
 }
 
 void iommu_update_ire_from_apic(
-    unsigned int apic, unsigned int reg, unsigned int value)
+    unsigned int apic, unsigned int pin, uint64_t rte)
 {
-    iommu_vcall(&iommu_ops, update_ire_from_apic, apic, reg, value);
+    iommu_vcall(&iommu_ops, update_ire_from_apic, apic, pin, rte);
 }
 
 unsigned int iommu_read_apic_from_ire(unsigned int apic, unsigned int reg)
@@ -576,16 +576,16 @@ struct page_info *iommu_alloc_pgtable(struct domain_iommu *hd,
 
         ASSERT((CONTIG_LEVEL_SHIFT & (contig_mask >> shift)) == CONTIG_LEVEL_SHIFT);
 
-        p[0] = (CONTIG_LEVEL_SHIFT + 0ull) << shift;
+        p[0] = (CONTIG_LEVEL_SHIFT + 0ULL) << shift;
         p[1] = 0;
-        p[2] = 1ull << shift;
+        p[2] = 1ULL << shift;
         p[3] = 0;
 
         for ( i = 4; i < PAGE_SIZE / sizeof(*p); i += 4 )
         {
-            p[i + 0] = (find_first_set_bit(i) + 0ull) << shift;
+            p[i + 0] = (find_first_set_bit(i) + 0ULL) << shift;
             p[i + 1] = 0;
-            p[i + 2] = 1ull << shift;
+            p[i + 2] = 1ULL << shift;
             p[i + 3] = 0;
         }
     }

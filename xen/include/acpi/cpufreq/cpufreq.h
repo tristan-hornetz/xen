@@ -24,6 +24,13 @@ DECLARE_PER_CPU(spinlock_t, cpufreq_statistic_lock);
 
 extern bool_t cpufreq_verbose;
 
+enum cpufreq_xen_opt {
+    CPUFREQ_none,
+    CPUFREQ_xen,
+    CPUFREQ_hwp,
+};
+extern enum cpufreq_xen_opt cpufreq_xen_opts[2];
+extern unsigned int cpufreq_xen_cnt;
 struct cpufreq_governor;
 
 struct acpi_cpufreq_data {
@@ -37,6 +44,9 @@ extern struct acpi_cpufreq_data *cpufreq_drv_data[NR_CPUS];
 struct cpufreq_cpuinfo {
     unsigned int        max_freq;
     unsigned int        second_max_freq;    /* P1 if Turbo Mode is on */
+    unsigned int        perf_freq; /* Scaling freq for aperf/mpref.
+                                      acpi-cpufreq uses max_freq, but HWP uses
+                                      base_freq.*/
     unsigned int        min_freq;
     unsigned int        transition_latency; /* in 10^(-9) s = nanoseconds */
 };
@@ -115,6 +125,8 @@ extern struct cpufreq_governor cpufreq_gov_performance;
 extern struct cpufreq_governor cpufreq_gov_powersave;
 
 extern struct list_head cpufreq_governor_list;
+
+extern bool cpufreq_governor_internal;
 
 extern int cpufreq_register_governor(struct cpufreq_governor *governor);
 extern struct cpufreq_governor *__find_governor(const char *governor);
@@ -237,5 +249,15 @@ int write_userspace_scaling_setspeed(unsigned int cpu, unsigned int freq);
 
 void cpufreq_dbs_timer_suspend(void);
 void cpufreq_dbs_timer_resume(void);
+
+void intel_feature_detect(struct cpufreq_policy *policy);
+
+int hwp_cmdline_parse(const char *s, const char *e);
+int hwp_register_driver(void);
+bool hwp_active(void);
+int get_hwp_para(unsigned int cpu,
+                 struct xen_cppc_para *cppc_para);
+int set_hwp_para(struct cpufreq_policy *policy,
+                 struct xen_set_cppc_para *set_cppc);
 
 #endif /* __XEN_CPUFREQ_PM_H__ */

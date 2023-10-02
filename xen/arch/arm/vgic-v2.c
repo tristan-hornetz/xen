@@ -161,7 +161,11 @@ static int vgic_v2_distr_mmio_read(struct vcpu *v, mmio_info_t *info,
 {
     struct hsr_dabt dabt = info->dabt;
     struct vgic_irq_rank *rank;
-    int gicd_reg = (int)(info->gpa - v->domain->arch.vgic.dbase);
+    /*
+     * gpa/dbase are paddr_t which size may be higher than 32-bit. Yet
+     * the difference will always be smaller than 32-bit.
+     */
+    unsigned int gicd_reg = info->gpa - v->domain->arch.vgic.dbase;
     unsigned long flags;
 
     perfc_incr(vgicd_reads);
@@ -306,7 +310,7 @@ static int vgic_v2_distr_mmio_read(struct vcpu *v, mmio_info_t *info,
     case VREG32(GICD_SGIR):
         if ( dabt.size != DABT_WORD ) goto bad_width;
         /* Write only -- read unknown */
-        *r = 0xdeadbeef;
+        *r = 0xdeadbeefU;
         return 1;
 
     case VRANGE32(0xF04, 0xF0C):
@@ -403,7 +407,11 @@ static int vgic_v2_distr_mmio_write(struct vcpu *v, mmio_info_t *info,
 {
     struct hsr_dabt dabt = info->dabt;
     struct vgic_irq_rank *rank;
-    int gicd_reg = (int)(info->gpa - v->domain->arch.vgic.dbase);
+    /*
+     * gpa/dbase are paddr_t which size may be higher than 32-bit. Yet
+     * the difference will always be smaller than 32-bit.
+     */
+    unsigned int gicd_reg = info->gpa - v->domain->arch.vgic.dbase;
     uint32_t tr;
     unsigned long flags;
 
@@ -731,7 +739,7 @@ static const struct vgic_ops vgic_v2_ops = {
     .lpi_get_priority = vgic_v2_lpi_get_priority,
 };
 
-int vgic_v2_init(struct domain *d, int *mmio_count)
+int vgic_v2_init(struct domain *d, unsigned int *mmio_count)
 {
     if ( !vgic_v2_hw.enabled )
     {

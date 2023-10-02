@@ -59,7 +59,8 @@ maintainers if you want to suggest a change.
      - Required
      - Precautions shall be taken in order to prevent the contents of a
        header file being included more than once
-     -
+     - Files that are intended to be included more than once do not need to
+       conform to the directive
 
    * - `Dir 4.11 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/D_04_11.c>`_
      - Required
@@ -82,6 +83,14 @@ maintainers if you want to suggest a change.
      - Summary
      - Notes
 
+   * - `Rule 1.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_01_01.c>`_
+     - Required
+     - The program shall contain no violations of the standard C syntax
+       and constraints, and shall not exceed the implementation's
+       translation limits
+     - We make use of several compiler extensions as documented by
+       `C-language-toolchain.rst <docs/misra/C-language-toolchain.rst>`_
+
    * - `Rule 1.3 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_01_03.c>`_
      - Required
      - There shall be no occurrence of undefined or critical unspecified
@@ -98,7 +107,16 @@ maintainers if you want to suggest a change.
    * - `Rule 2.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_02_01_1.c>`_
      - Required
      - A project shall not contain unreachable code
-     -
+     - The following are allowed:
+         - Invariantly constant conditions, e.g. if(IS_ENABLED(CONFIG_HVM)) { S; }
+         - Switch with a controlling value statically determined not to
+           match one or more case statements
+         - Functions that are intended to be referenced only from
+           assembly code (e.g. 'do_trap_fiq')
+         - asm-offsets.c, as they are not linked deliberately, because
+           they are used to generate definitions for asm modules
+         - Declarations without initializer are safe, as they are not
+           executed
 
    * - `Rule 2.6 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_02_06.c>`_
      - Advisory
@@ -109,7 +127,7 @@ maintainers if you want to suggest a change.
      - Required
      - The character sequences /* and // shall not be used within a
        comment
-     -
+     - Comments containing hyperlinks inside C-style block comments are safe
 
    * - `Rule 3.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_03_02.c>`_
      - Required
@@ -155,6 +173,11 @@ maintainers if you want to suggest a change.
      - The Xen characters limit for macro identifiers is 40. Public
        headers (xen/include/public/) are allowed to retain longer
        identifiers for backward compatibility.
+
+   * - `Rule 5.6 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_05_06.c>`_
+     - Required
+     - A typedef name shall be a unique identifier
+     -
 
    * - `Rule 6.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_06_01.c>`_
      - Required
@@ -220,19 +243,22 @@ maintainers if you want to suggest a change.
    * - `Rule 8.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_02.c>`_
      - Required
      - Function types shall be in prototype form with named parameters
-     -
+     - Clarification: both function and function pointers types shall
+       have named parameters.
 
    * - `Rule 8.3 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_03.c>`_
      - Required
      - All declarations of an object or function shall use the same
        names and type qualifiers
-     -
+     - The type ret_t maybe be deliberately used and defined as int or
+       long depending on the type of guest to service
 
    * - `Rule 8.4 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_04.c>`_
      - Required
      - A compatible declaration shall be visible when an object or
        function with external linkage is defined
-     -
+     - Allowed exceptions: asm-offsets.c, definitions for asm modules
+       not called from C code, gcov_base.c
 
    * - `Rule 8.5 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_08_05_2.c>`_
      - Required
@@ -294,6 +320,74 @@ maintainers if you want to suggest a change.
      - An element of an object shall not be initialized more than once
      -
 
+   * - `Rule 10.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_10_01.c>`_
+     - Required
+     - Operands shall not be of an inappropriate essential type
+     - The following are allowed:
+         - Value-preserving conversions of integer constants
+         - Bitwise and, or, xor, one's complement, bitwise and assignment,
+           bitwise or assignment, bitwise xor assignment (bitwise and, or, xor
+           are safe on non-negative integers; also Xen assumes two's complement
+           representation)
+         - Left shift, right shift, left shift assignment, right shift
+           assignment (see C-language-toolchain.rst for uses of
+           compilers' extensions)
+         - Implicit conversions to boolean for conditionals (?: if while
+           for) and logical operators (! || &&)
+
+   * - `Rule 10.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_10_02.c>`_
+     - Required
+     - Expressions of essentially character type shall not be used
+       inappropriately in addition and subtraction operations
+     -
+
+   * - `Rule 10.3 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_10_03.c>`_
+     - Required
+     - The value of an expression shall not be assigned to an object
+       with a narrower essential type or of a different essential type
+       category
+     - Please beware that this rule has many violations in the Xen
+       codebase today, and its adoption is aspirational. However, when
+       submitting new patches please try to decrease the number of
+       violations when possible.
+
+       gcc has a helpful warning that can help you spot and remove
+       violations of this kind: conversion. For instance, you can use
+       it as follows:
+
+       CFLAGS="-Wconversion -Wno-error=sign-conversion -Wno-error=conversion" make -C xen
+
+   * - `Rule 10.4 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_10_04.c>`_
+     - Required
+     - Both operands of an operator in which the usual arithmetic
+       conversions are performed shall have the same essential type
+       category
+     - Please beware that this rule has many violations in the Xen
+       codebase today, and its adoption is aspirational. However, when
+       submitting new patches please try to decrease the number of
+       violations when possible.
+
+       gcc has a helpful warning that can help you spot and remove
+       violations of this kind: arith-conversion. For instance, you
+       can use it as follows:
+
+       CFLAGS="-Warith-conversion -Wno-error=arith-conversion" make -C xen
+
+   * - `Rule 11.7 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_11_07.c>`_
+     - Required
+     - A cast shall not be performed between pointer to object and a noninteger arithmetic type
+     -
+
+   * - `Rule 11.8 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_11_08.c>`_
+     - Required
+     - A cast shall not remove any const or volatile qualification from the type pointed to by a pointer
+     -
+
+   * - `Rule 11.9 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_11_09.c>`_
+     - Required
+     - The macro NULL shall be the only permitted form of null pointer constant
+     -
+
    * - `Rule 12.5 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_12_05.c>`_
      - Mandatory
      - The sizeof operator shall not have an operand which is a function
@@ -315,6 +409,18 @@ maintainers if you want to suggest a change.
      - Required
      - A loop counter shall not have essentially floating type
      -
+
+   * - `Rule 14.3 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_14_03.c>`_
+     - Required
+     - Controlling expressions shall not be invariant
+     - Due to the extensive usage of IS_ENABLED, sizeof compile-time
+       checks, and other constructs that are detected as errors by MISRA
+       C scanners, managing the configuration of a MISRA C scanner for
+       this rule would be unmanageable. Thus, this rule is adopted with
+       a project-wide deviation on if, ?:, switch(sizeof(...)), and
+       switch(offsetof(...)) statements.
+
+       while(0) and while(1) and alike are allowed.
 
    * - `Rule 16.7 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_16_07.c>`_
      - Required
@@ -356,7 +462,9 @@ maintainers if you want to suggest a change.
      - Required
      - Expressions resulting from the expansion of macro parameters
        shall be enclosed in parentheses
-     -
+     - Extra parentheses are not required when macro parameters are used
+       as function arguments, as macro arguments, array indices, lhs in
+       assignments
 
    * - `Rule 20.13 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_20_13.c>`_
      - Required

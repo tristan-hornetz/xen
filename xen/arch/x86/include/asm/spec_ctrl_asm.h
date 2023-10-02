@@ -67,7 +67,6 @@
  *  - SPEC_CTRL_ENTRY_FROM_PV
  *  - SPEC_CTRL_ENTRY_FROM_INTR
  *  - SPEC_CTRL_ENTRY_FROM_INTR_IST
- *  - SPEC_CTRL_EXIT_TO_XEN_IST
  *  - SPEC_CTRL_EXIT_TO_XEN
  *  - SPEC_CTRL_EXIT_TO_PV
  *
@@ -166,6 +165,19 @@
 .L\@_verw_skip:
 .endm
 
+.macro DO_SPEC_CTRL_DIV
+/*
+ * Requires nothing
+ * Clobbers %rax
+ *
+ * Issue a DIV for its flushing side effect (Zen1 uarch specific).  Any
+ * non-faulting DIV will do; a byte DIV has least latency, and doesn't clobber
+ * %rdx.
+ */
+    mov $1, %eax
+    div %al
+.endm
+
 .macro DO_SPEC_CTRL_ENTRY maybexen:req
 /*
  * Requires %rsp=regs (also cpuinfo if !maybexen)
@@ -200,27 +212,6 @@
     wrmsr
 .endm
 
-.macro DO_SPEC_CTRL_EXIT_TO_XEN
-/*
- * Requires %rbx=stack_end
- * Clobbers %rax, %rcx, %rdx
- *
- * When returning to Xen context, look to see whether SPEC_CTRL shadowing is
- * in effect, and reload the shadow value.  This covers race conditions which
- * exist with an NMI/MCE/etc hitting late in the return-to-guest path.
- */
-    xor %edx, %edx
-
-    testb $SCF_use_shadow, STACK_CPUINFO_FIELD(spec_ctrl_flags)(%rbx)
-    jz .L\@_skip
-
-    mov STACK_CPUINFO_FIELD(shadow_spec_ctrl)(%rbx), %eax
-    mov $MSR_SPEC_CTRL, %ecx
-    wrmsr
-
-.L\@_skip:
-.endm
-
 .macro DO_SPEC_CTRL_EXIT_TO_GUEST
 /*
  * Requires %eax=spec_ctrl, %rsp=regs/cpuinfo
@@ -240,35 +231,67 @@
     wrmsr
 .endm
 
-/* Use after an entry from PV context (syscall/sysenter/int80/int82/etc). */
-#define SPEC_CTRL_ENTRY_FROM_PV                                         \
+/*
+ * Used after an entry from PV context: SYSCALL, SYSENTER, INT,
+ * etc.  There is always a guest speculation state in context.
+ */
+.macro SPEC_CTRL_ENTRY_FROM_PV
+/*
+ * Requires %rsp=regs/cpuinfo, %rdx=0
+ * Clobbers %rax, %rcx, %rdx
+ */
     ALTERNATIVE "", __stringify(DO_SPEC_CTRL_COND_IBPB maybexen=0),     \
-        X86_FEATURE_IBPB_ENTRY_PV;                                      \
-    ALTERNATIVE "", DO_OVERWRITE_RSB, X86_FEATURE_SC_RSB_PV;            \
+        X86_FEATURE_IBPB_ENTRY_PV
+
+    ALTERNATIVE "", DO_OVERWRITE_RSB, X86_FEATURE_SC_RSB_PV
+
     ALTERNATIVE "", __stringify(DO_SPEC_CTRL_ENTRY maybexen=0),         \
         X86_FEATURE_SC_MSR_PV
-
-/* Use in interrupt/exception context.  May interrupt Xen or PV context. */
-#define SPEC_CTRL_ENTRY_FROM_INTR                                       \
-    ALTERNATIVE "", __stringify(DO_SPEC_CTRL_COND_IBPB maybexen=1),     \
-        X86_FEATURE_IBPB_ENTRY_PV;                                      \
-    ALTERNATIVE "", DO_OVERWRITE_RSB, X86_FEATURE_SC_RSB_PV;            \
-    ALTERNATIVE "", __stringify(DO_SPEC_CTRL_ENTRY maybexen=1),         \
-        X86_FEATURE_SC_MSR_PV
-
-/* Use when exiting to Xen context. */
-#define SPEC_CTRL_EXIT_TO_XEN                                           \
-    ALTERNATIVE "",                                                     \
-        DO_SPEC_CTRL_EXIT_TO_XEN, X86_FEATURE_SC_MSR_PV
-
-/* Use when exiting to PV guest context. */
-#define SPEC_CTRL_EXIT_TO_PV                                            \
-    ALTERNATIVE "",                                                     \
-        DO_SPEC_CTRL_EXIT_TO_GUEST, X86_FEATURE_SC_MSR_PV;              \
-    DO_SPEC_CTRL_COND_VERW
+.endm
 
 /*
- * Use in IST interrupt/exception context.  May interrupt Xen or PV context.
+ * Used after an exception or maskable interrupt, hitting Xen or PV context.
+ * There will either be a guest speculation context, or (barring fatal
+ * exceptions) a well-formed Xen speculation context.
+ */
+.macro SPEC_CTRL_ENTRY_FROM_INTR
+/*
+ * Requires %rsp=regs, %r14=stack_end, %rdx=0
+ * Clobbers %rax, %rcx, %rdx
+ */
+    ALTERNATIVE "", __stringify(DO_SPEC_CTRL_COND_IBPB maybexen=1),     \
+        X86_FEATURE_IBPB_ENTRY_PV
+
+    ALTERNATIVE "", DO_OVERWRITE_RSB, X86_FEATURE_SC_RSB_PV
+
+    ALTERNATIVE "", __stringify(DO_SPEC_CTRL_ENTRY maybexen=1),         \
+        X86_FEATURE_SC_MSR_PV
+.endm
+
+/*
+ * Used when exiting from any entry context, back to PV context.  This
+ * includes from an IST entry which moved onto the primary stack.
+ */
+.macro SPEC_CTRL_EXIT_TO_PV
+/*
+ * Requires %rax=spec_ctrl, %rsp=regs/info
+ * Clobbers %rcx, %rdx
+ */
+    ALTERNATIVE "", DO_SPEC_CTRL_EXIT_TO_GUEST, X86_FEATURE_SC_MSR_PV
+
+    DO_SPEC_CTRL_COND_VERW
+
+    ALTERNATIVE "", DO_SPEC_CTRL_DIV, X86_FEATURE_SC_DIV
+.endm
+
+/*
+ * Used after an IST entry hitting Xen or PV context.  Special care is needed,
+ * because when hitting Xen context, there may not be a well-formed
+ * speculation context.  (i.e. it can hit in the middle of
+ * SPEC_CTRL_{ENTRY,EXIT}_* regions.)
+ *
+ * An IST entry which hits PV context moves onto the primary stack and leaves
+ * via SPEC_CTRL_EXIT_TO_PV, *not* SPEC_CTRL_EXIT_TO_XEN.
  */
 .macro SPEC_CTRL_ENTRY_FROM_INTR_IST
 /*
@@ -327,18 +350,53 @@ UNLIKELY_DISPATCH_LABEL(\@_serialise):
     UNLIKELY_END(\@_serialise)
 .endm
 
-/* Use when exiting to Xen in IST context. */
-.macro SPEC_CTRL_EXIT_TO_XEN_IST
 /*
- * Requires %rbx=stack_end
- * Clobbers %rax, %rcx, %rdx
+ * Use when exiting from any entry context, back to Xen context.  This
+ * includes returning to other SPEC_CTRL_{ENTRY,EXIT}_* regions with an
+ * incomplete speculation context.
+ *
+ * Because we might have interrupted Xen beyond SPEC_CTRL_EXIT_TO_$GUEST, we
+ * need to treat this as if it were an EXIT_TO_$GUEST case too.
  */
-    testb $SCF_ist_sc_msr, STACK_CPUINFO_FIELD(spec_ctrl_flags)(%rbx)
-    jz .L\@_skip
+.macro SPEC_CTRL_EXIT_TO_XEN
+/*
+ * Requires %r12=ist_exit, %r14=stack_end
+ * Clobbers %rax, %rbx, %rcx, %rdx
+ */
+    movzbl STACK_CPUINFO_FIELD(spec_ctrl_flags)(%r14), %ebx
 
-    DO_SPEC_CTRL_EXIT_TO_XEN
+    testb $SCF_ist_sc_msr, %bl
+    jz .L\@_skip_sc_msr
 
-.L\@_skip:
+    /*
+     * When returning to Xen context, look to see whether SPEC_CTRL shadowing
+     * is in effect, and reload the shadow value.  This covers race conditions
+     * which exist with an NMI/MCE/etc hitting late in the return-to-guest
+     * path.
+     */
+    xor %edx, %edx
+
+    testb $SCF_use_shadow, %bl
+    jz .L\@_skip_sc_msr
+
+    mov STACK_CPUINFO_FIELD(shadow_spec_ctrl)(%r14), %eax
+    mov $MSR_SPEC_CTRL, %ecx
+    wrmsr
+
+.L\@_skip_sc_msr:
+
+    test %r12, %r12
+    jz .L\@_skip_ist_exit
+
+    /* Logically DO_SPEC_CTRL_COND_VERW but without the %rsp=cpuinfo dependency */
+    testb $SCF_verw, %bl
+    jz .L\@_skip_verw
+    verw STACK_CPUINFO_FIELD(verw_sel)(%r14)
+.L\@_skip_verw:
+
+    ALTERNATIVE "", DO_SPEC_CTRL_DIV, X86_FEATURE_SC_DIV
+
+.L\@_skip_ist_exit:
 .endm
 
 #endif /* __ASSEMBLY__ */

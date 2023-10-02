@@ -24,6 +24,7 @@
 #include <xen/console.h>
 #include <xen/smp.h>
 #include <xen/keyhandler.h>
+#include <xen/watchdog.h>
 #include <xen/cpu.h>
 #include <asm/current.h>
 #include <asm/mc146818rtc.h>
@@ -108,7 +109,7 @@ static unsigned int lapic_nmi_owner;
  *     be enabled
  * -1: the lapic NMI watchdog is disabled, but can be enabled
  */
-int nmi_active;
+static int nmi_active;
 
 #define K7_EVNTSEL_ENABLE	(1 << 22)
 #define K7_EVNTSEL_INT		(1 << 20)
@@ -205,7 +206,7 @@ void __init check_nmi_watchdog(void)
      * (Intel SDM, section 18.22.2)
      */
     if ( nmi_watchdog == NMI_LOCAL_APIC )
-        nmi_hz = max(1ul, cpu_khz >> 20);
+        nmi_hz = max(1UL, cpu_khz >> 20);
 
     return;
 }

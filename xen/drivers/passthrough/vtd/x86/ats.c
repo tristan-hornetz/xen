@@ -57,8 +57,7 @@ int ats_device(const struct pci_dev *pdev, const struct acpi_drhd_unit *drhd)
         return 0;
 
     ats_drhd = find_ats_dev_drhd(drhd->iommu);
-    pos = pci_find_ext_capability(pdev->seg, pdev->bus, pdev->devfn,
-                                  PCI_EXT_CAP_ID_ATS);
+    pos = pci_find_ext_capability(pdev->sbdf, PCI_EXT_CAP_ID_ATS);
 
     if ( pos && (ats_drhd == NULL) )
     {
@@ -119,7 +118,7 @@ int dev_invalidate_iotlb(struct vtd_iommu *iommu, u16 did,
 
     list_for_each_entry_safe( pdev, temp, &iommu->ats_devices, ats.list )
     {
-        bool_t sbit;
+        bool sbit;
         int rc = 0;
 
         switch ( type )

@@ -321,6 +321,7 @@ def crunch_numbers(state):
         IBRSB: [STIBP, SSBD, INTEL_PSFD, EIBRS],
         IBRS: [AMD_STIBP, AMD_SSBD, PSFD, AUTO_IBRS,
                IBRS_ALWAYS, IBRS_FAST, IBRS_SAME_MODE],
+        IBPB: [IBPB_RET, SBPB, IBPB_BRTYPE],
         AMD_STIBP: [STIBP_ALWAYS],
 
         # In principle the TSXLDTRK insns could also be considered independent.
@@ -363,8 +364,8 @@ def crunch_numbers(state):
     state.deep_features = deps.keys()
     state.nr_deep_deps = len(state.deep_deps.keys())
 
-    # Calculate the bitfield name declarations
-    for word in range(state.nr_entries):
+    # Calculate the bitfield name declarations.  Leave 4 placeholders on the end
+    for word in range(state.nr_entries + 4):
 
         names = []
         for bit in range(32):
@@ -382,7 +383,10 @@ def crunch_numbers(state):
 
             names.append(name.lower())
 
-        state.bitfields.append("bool " + ":1, ".join(names) + ":1")
+        if any(names):
+            state.bitfields.append("bool " + ":1, ".join(names) + ":1")
+        else:
+            state.bitfields.append("uint32_t _placeholder_%u" % (word, ))
 
 
 def write_results(state):
@@ -463,8 +467,6 @@ def write_results(state):
 """}
 
 """)
-
-    state.bitfields += ["uint32_t :32 /* placeholder */"] * 4
 
     for idx, text in enumerate(state.bitfields):
         state.output.write(

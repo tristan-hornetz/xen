@@ -11,11 +11,7 @@
       - '*.log'
       - '*/*.log'
     when: always
-  except:
-    - master
-    - smoke
-    - /^coverity-tested\/.*/
-    - /^stable-.*/
+  needs: []
 
 .gcc-tmpl:
   variables: &gcc
@@ -213,11 +209,6 @@
 .yocto-test:
   stage: build
   image: registry.gitlab.com/xen-project/xen/${CONTAINER}
-  except:
-    - master
-    - smoke
-    - /^coverity-tested\/.*/
-    - /^stable-.*/
   script:
     - ./automation/build/yocto/build-yocto.sh -v --log-dir=./logs --xen-dir=`pwd` ${YOCTO_BOARD} ${YOCTO_OUTPUT}
   variables:
@@ -267,13 +258,13 @@
 
 .test-jobs-artifact-common:
   stage: build
-  except: !reference [.test-jobs-common, except]
+  needs: []
 
 # Arm test artifacts
 
-alpine-3.12-arm64-rootfs-export:
+alpine-3.18-arm64-rootfs-export:
   extends: .test-jobs-artifact-common
-  image: registry.gitlab.com/xen-project/xen/tests-artifacts/alpine:3.12-arm64v8
+  image: registry.gitlab.com/xen-project/xen/tests-artifacts/alpine:3.18-arm64v8
   script:
     - mkdir binaries && cp /initrd.tar.gz binaries/initrd.tar.gz
   artifacts:
@@ -315,11 +306,25 @@ qemu-system-aarch64-6.0.0-arm32-export:
   tags:
     - arm64
 
+# ppc64 test artifacts
+
+qemu-system-ppc64-8.1.0-ppc64-export:
+  extends: .test-jobs-artifact-common
+  image: registry.gitlab.com/xen-project/xen/tests-artifacts/qemu-system-ppc64:8.1.0-ppc64
+  script:
+    - mkdir binaries && cp /qemu-system-ppc64 /skiboot.lid binaries/
+  artifacts:
+    paths:
+      - binaries/qemu-system-ppc64
+      - binaries/skiboot.lid
+  tags:
+    - x86_64
+
 # x86_64 test artifacts
 
-alpine-3.12-rootfs-export:
+alpine-3.18-rootfs-export:
   extends: .test-jobs-artifact-common
-  image: registry.gitlab.com/xen-project/xen/tests-artifacts/alpine:3.12
+  image: registry.gitlab.com/xen-project/xen/tests-artifacts/alpine:3.18
   script:
     - mkdir binaries && cp /initrd.tar.gz binaries/initrd.tar.gz
   artifacts:
@@ -343,68 +348,68 @@ kernel-6.1.19-export:
 
 # Build jobs needed for tests
 
-alpine-3.12-gcc:
+alpine-3.18-gcc:
   extends: .gcc-x86-64-build
   variables:
-    CONTAINER: alpine:3.12
+    CONTAINER: alpine:3.18
 
-alpine-3.12-gcc-debug:
+alpine-3.18-gcc-debug:
   extends: .gcc-x86-64-build-debug
   variables:
-    CONTAINER: alpine:3.12
+    CONTAINER: alpine:3.18
 
 debian-stretch-gcc-debug:
   extends: .gcc-x86-64-build-debug
   variables:
     CONTAINER: debian:stretch
 
-debian-unstable-clang-debug:
+debian-bookworm-clang-debug:
   extends: .clang-x86-64-build-debug
   variables:
-    CONTAINER: debian:unstable
+    CONTAINER: debian:bookworm
 
 # Arm32 cross-build
 
-debian-unstable-gcc-arm32:
+debian-bookworm-gcc-arm32:
   extends: .gcc-arm32-cross-build
   variables:
-    CONTAINER: debian:unstable-arm64v8-arm32-gcc
+    CONTAINER: debian:bookworm-arm64v8-arm32-gcc
     HYPERVISOR_ONLY: y
 
-debian-unstable-gcc-arm32-debug:
+debian-bookworm-gcc-arm32-debug:
   extends: .gcc-arm32-cross-build-debug
   variables:
-    CONTAINER: debian:unstable-arm64v8-arm32-gcc
+    CONTAINER: debian:bookworm-arm64v8-arm32-gcc
     HYPERVISOR_ONLY: y
 
-debian-unstable-gcc-arm32-randconfig:
+debian-bookworm-gcc-arm32-randconfig:
   extends: .gcc-arm32-cross-build
   variables:
-    CONTAINER: debian:unstable-arm64v8-arm32-gcc
+    CONTAINER: debian:bookworm-arm64v8-arm32-gcc
     HYPERVISOR_ONLY: y
     RANDCONFIG: y
 
-debian-unstable-gcc-arm32-debug-randconfig:
+debian-bookworm-gcc-arm32-debug-randconfig:
   extends: .gcc-arm32-cross-build-debug
   variables:
-    CONTAINER: debian:unstable-arm64v8-arm32-gcc
+    CONTAINER: debian:bookworm-arm64v8-arm32-gcc
     HYPERVISOR_ONLY: y
     RANDCONFIG: y
 
-debian-unstable-gcc-arm32-staticmem:
+debian-bookworm-gcc-arm32-staticmem:
   extends: .gcc-arm32-cross-build
   variables:
-    CONTAINER: debian:unstable-arm64v8-arm32-gcc
+    CONTAINER: debian:bookworm-arm64v8-arm32-gcc
     HYPERVISOR_ONLY: y
     EXTRA_XEN_CONFIG: |
       CONFIG_EXPERT=y
       CONFIG_UNSUPPORTED=y
       CONFIG_STATIC_MEMORY=y
 
-debian-unstable-gcc-arm32-debug-staticmem:
+debian-bookworm-gcc-arm32-debug-staticmem:
   extends: .gcc-arm32-cross-build-debug
   variables:
-    CONTAINER: debian:unstable-arm64v8-arm32-gcc
+    CONTAINER: debian:bookworm-arm64v8-arm32-gcc
     HYPERVISOR_ONLY: y
     EXTRA_XEN_CONFIG: |
       CONFIG_EXPERT=y
@@ -413,100 +418,100 @@ debian-unstable-gcc-arm32-debug-staticmem:
 
 # Arm builds
 
-debian-unstable-gcc-arm64:
+debian-bookworm-gcc-arm64:
   extends: .gcc-arm64-build
   variables:
-    CONTAINER: debian:unstable-arm64v8
+    CONTAINER: debian:bookworm-arm64v8
 
-debian-unstable-gcc-debug-arm64:
+debian-bookworm-gcc-debug-arm64:
   extends: .gcc-arm64-build-debug
   variables:
-    CONTAINER: debian:unstable-arm64v8
+    CONTAINER: debian:bookworm-arm64v8
 
-debian-unstable-gcc-arm64-randconfig:
+debian-bookworm-gcc-arm64-randconfig:
   extends: .gcc-arm64-build
   variables:
-    CONTAINER: debian:unstable-arm64v8
+    CONTAINER: debian:bookworm-arm64v8
     RANDCONFIG: y
 
-debian-unstable-gcc-debug-arm64-randconfig:
+debian-bookworm-gcc-debug-arm64-randconfig:
   extends: .gcc-arm64-build-debug
   variables:
-    CONTAINER: debian:unstable-arm64v8
+    CONTAINER: debian:bookworm-arm64v8
     RANDCONFIG: y
 
-alpine-3.12-gcc-arm64:
+alpine-3.18-gcc-arm64:
   extends: .gcc-arm64-build
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
 
-alpine-3.12-gcc-debug-arm64:
+alpine-3.18-gcc-debug-arm64:
   extends: .gcc-arm64-build-debug
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
 
-alpine-3.12-gcc-arm64-randconfig:
+alpine-3.18-gcc-arm64-randconfig:
   extends: .gcc-arm64-build
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     RANDCONFIG: y
 
-alpine-3.12-gcc-debug-arm64-randconfig:
+alpine-3.18-gcc-debug-arm64-randconfig:
   extends: .gcc-arm64-build-debug
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     RANDCONFIG: y
 
-alpine-3.12-gcc-arm64-staticmem:
+alpine-3.18-gcc-arm64-staticmem:
   extends: .gcc-arm64-build
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     EXTRA_XEN_CONFIG: |
       CONFIG_EXPERT=y
       CONFIG_UNSUPPORTED=y
       CONFIG_STATIC_MEMORY=y
 
-alpine-3.12-gcc-debug-arm64-staticmem:
+alpine-3.18-gcc-debug-arm64-staticmem:
   extends: .gcc-arm64-build-debug
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     EXTRA_XEN_CONFIG: |
       CONFIG_EXPERT=y
       CONFIG_UNSUPPORTED=y
       CONFIG_STATIC_MEMORY=y
 
-alpine-3.12-gcc-arm64-static-shared-mem:
+alpine-3.18-gcc-arm64-static-shared-mem:
   extends: .gcc-arm64-build
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     EXTRA_XEN_CONFIG: |
       CONFIG_UNSUPPORTED=y
       CONFIG_STATIC_MEMORY=y
       CONFIG_STATIC_SHM=y
 
-alpine-3.12-gcc-debug-arm64-static-shared-mem:
+alpine-3.18-gcc-debug-arm64-static-shared-mem:
   extends: .gcc-arm64-build-debug
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     EXTRA_XEN_CONFIG: |
       CONFIG_UNSUPPORTED=y
       CONFIG_STATIC_MEMORY=y
       CONFIG_STATIC_SHM=y
 
-alpine-3.12-gcc-arm64-boot-cpupools:
+alpine-3.18-gcc-arm64-boot-cpupools:
   extends: .gcc-arm64-build
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     EXTRA_XEN_CONFIG: |
       CONFIG_EXPERT=y
       CONFIG_UNSUPPORTED=y
       CONFIG_SCHED_NULL=y
       CONFIG_BOOT_TIME_CPUPOOLS=y
 
-alpine-3.12-gcc-debug-arm64-boot-cpupools:
+alpine-3.18-gcc-debug-arm64-boot-cpupools:
   extends: .gcc-arm64-build-debug
   variables:
-    CONTAINER: alpine:3.12-arm64v8
+    CONTAINER: alpine:3.18-arm64v8
     EXTRA_XEN_CONFIG: |
       CONFIG_BOOT_TIME_CPUPOOLS=y
 
@@ -558,24 +563,6 @@ debian-bullseye-gcc-ppc64le-debug:
     KBUILD_DEFCONFIG: ppc64_defconfig
     HYPERVISOR_ONLY: y
 
-debian-bullseye-gcc-ppc64le-randconfig:
-  extends: .gcc-ppc64le-cross-build
-  variables:
-    CONTAINER: debian:bullseye-ppc64le
-    KBUILD_DEFCONFIG: ppc64_defconfig
-    RANDCONFIG: y
-    EXTRA_FIXED_RANDCONFIG:
-      CONFIG_COVERAGE=n
-
-debian-bullseye-gcc-ppc64le-debug-randconfig:
-  extends: .gcc-ppc64le-cross-build-debug
-  variables:
-    CONTAINER: debian:bullseye-ppc64le
-    KBUILD_DEFCONFIG: ppc64_defconfig
-    RANDCONFIG: y
-    EXTRA_FIXED_RANDCONFIG:
-      CONFIG_COVERAGE=n
-
 # Yocto test jobs
 yocto-qemuarm64:
   extends: .yocto-test-arm64
@@ -595,40 +582,40 @@ yocto-qemux86-64:
 
 # Cppcheck analysis jobs
 
-debian-unstable-gcc-cppcheck:
+debian-bookworm-gcc-cppcheck:
   extends: .gcc-x86-64-cross-build
   variables:
-    CONTAINER: debian:unstable-cppcheck
+    CONTAINER: debian:bookworm-cppcheck
     CROSS_COMPILE: /usr/bin/x86_64-linux-gnu-
     CPPCHECK: y
     HYPERVISOR_ONLY: y
 
-debian-unstable-gcc-arm32-cppcheck:
+debian-bookworm-gcc-arm32-cppcheck:
   extends: .gcc-arm32-cross-build
   variables:
-    CONTAINER: debian:unstable-cppcheck
+    CONTAINER: debian:bookworm-cppcheck
     CROSS_COMPILE: /usr/bin/arm-linux-gnueabihf-
     CPPCHECK: y
     HYPERVISOR_ONLY: y
 
-debian-unstable-gcc-arm64-cppcheck:
+debian-bookworm-gcc-arm64-cppcheck:
   extends: .gcc-arm64-build
   variables:
-    CONTAINER: debian:unstable-cppcheck
+    CONTAINER: debian:bookworm-cppcheck
     CPPCHECK: y
     HYPERVISOR_ONLY: y
 
 # Build jobs not needed for tests
 
-alpine-3.12-clang:
+alpine-3.18-clang:
   extends: .clang-x86-64-build
   variables:
-    CONTAINER: alpine:3.12
+    CONTAINER: alpine:3.18
 
-alpine-3.12-clang-debug:
+alpine-3.18-clang-debug:
   extends: .clang-x86-64-build-debug
   variables:
-    CONTAINER: alpine:3.12
+    CONTAINER: alpine:3.18
 
 archlinux-gcc:
   extends: .gcc-x86-64-build
@@ -683,42 +670,42 @@ debian-buster-gcc-ibt:
     EXTRA_FIXED_RANDCONFIG: |
       CONFIG_XEN_IBT=y
 
-debian-unstable-clang:
+debian-bookworm-clang:
   extends: .clang-x86-64-build
   variables:
-    CONTAINER: debian:unstable
+    CONTAINER: debian:bookworm
 
-debian-unstable-gcc:
+debian-bookworm-gcc:
   extends: .gcc-x86-64-build
   variables:
-    CONTAINER: debian:unstable
+    CONTAINER: debian:bookworm
 
-debian-unstable-gcc-debug:
+debian-bookworm-gcc-debug:
   extends: .gcc-x86-64-build-debug
   variables:
-    CONTAINER: debian:unstable
+    CONTAINER: debian:bookworm
 
-debian-unstable-gcc-randconfig:
+debian-bookworm-gcc-randconfig:
   extends: .gcc-x86-64-build
   variables:
-    CONTAINER: debian:unstable
+    CONTAINER: debian:bookworm
     RANDCONFIG: y
 
-debian-unstable-gcc-debug-randconfig:
+debian-bookworm-gcc-debug-randconfig:
   extends: .gcc-x86-64-build-debug
   variables:
-    CONTAINER: debian:unstable
+    CONTAINER: debian:bookworm
     RANDCONFIG: y
 
-debian-unstable-32-clang-debug:
+debian-bookworm-32-clang-debug:
   extends: .clang-x86-32-build-debug
   variables:
-    CONTAINER: debian:unstable-i386
+    CONTAINER: debian:bookworm-i386
 
-debian-unstable-32-gcc-debug:
+debian-bookworm-32-gcc-debug:
   extends: .gcc-x86-32-build-debug
   variables:
-    CONTAINER: debian:unstable-i386
+    CONTAINER: debian:bookworm-i386
 
 fedora-gcc:
   extends: .gcc-x86-64-build

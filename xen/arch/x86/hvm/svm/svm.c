@@ -1077,7 +1077,7 @@ static void svm_guest_osvw_init(struct domain *d)
      * Guests should see errata 400 and 415 as fixed (assuming that
      * HLT and IO instructions are intercepted).
      */
-    svm->osvw.length = min(max(3ul, osvw_length), 64ul);
+    svm->osvw.length = min(max(3UL, osvw_length), 64UL);
     svm->osvw.status = osvw_status & ~6;
 
     /*
@@ -1420,7 +1420,7 @@ static void cf_check svm_inject_event(const struct x86_event *event)
      */
     if ( !((vmcb_get_efer(vmcb) & EFER_LMA) && vmcb->cs.l) )
     {
-        regs->rip = regs->eip;
+        regs->rip = (uint32_t)regs->rip;
         vmcb->nextrip = (uint32_t)vmcb->nextrip;
     }
 
@@ -1614,8 +1614,6 @@ static int _svm_cpu_up(bool bsp)
     /* Initialize OSVW bits to be used by guests */
     svm_host_osvw_init();
 
-    /* Minimal checking that enough CPU setup was done by now. */
-    ASSERT(str() == TSS_SELECTOR);
     svm_vmsave_pa(per_cpu(host_vmcb, cpu));
 
     return 0;
@@ -1654,7 +1652,7 @@ static void svm_do_nested_pgfault(struct vcpu *v,
     else if ( pfec & NPT_PFEC_in_gpt )
         npfec.kind = npfec_kind_in_gpt;
 
-    ret = hvm_hap_nested_page_fault(gpa, ~0ul, npfec);
+    ret = hvm_hap_nested_page_fault(gpa, ~0UL, npfec);
 
     if ( tb_init_done )
     {
@@ -2417,7 +2415,7 @@ static bool cf_check svm_get_pending_event(
 {
     const struct vmcb_struct *vmcb = v->arch.hvm.svm.vmcb;
 
-    if ( vmcb->event_inj.v )
+    if ( !vmcb->event_inj.v )
         return false;
 
     info->vector = vmcb->event_inj.vector;

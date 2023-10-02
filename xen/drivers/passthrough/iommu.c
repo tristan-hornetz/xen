@@ -25,11 +25,11 @@
 unsigned int __read_mostly iommu_dev_iotlb_timeout = 1000;
 integer_param("iommu_dev_iotlb_timeout", iommu_dev_iotlb_timeout);
 
-bool_t __initdata iommu_enable = 1;
-bool_t __read_mostly iommu_enabled;
-bool_t __read_mostly force_iommu;
-bool_t __read_mostly iommu_verbose;
-static bool_t __read_mostly iommu_crash_disable;
+bool __initdata iommu_enable = 1;
+bool __read_mostly iommu_enabled;
+bool __read_mostly force_iommu;
+bool __read_mostly iommu_verbose;
+static bool __read_mostly iommu_crash_disable;
 
 #define IOMMU_quarantine_none         0 /* aka false */
 #define IOMMU_quarantine_basic        1 /* aka true */
@@ -57,9 +57,9 @@ int8_t __hwdom_initdata iommu_hwdom_reserved = -1;
 bool __read_mostly iommu_hap_pt_share = true;
 #endif
 
-bool_t __read_mostly iommu_debug;
+bool __read_mostly iommu_debug;
 
-DEFINE_PER_CPU(bool_t, iommu_dont_flush_iotlb);
+DEFINE_PER_CPU(bool, iommu_dont_flush_iotlb);
 
 static int __init cf_check parse_iommu_param(const char *s)
 {
@@ -548,7 +548,7 @@ static int __init iommu_quarantine_init(void)
 int __init iommu_setup(void)
 {
     int rc = -ENODEV;
-    bool_t force_intremap = force_iommu && iommu_intremap;
+    bool force_intremap = force_iommu && iommu_intremap;
 
     if ( iommu_hwdom_strict )
         iommu_hwdom_passthrough = false;
@@ -672,7 +672,7 @@ int iommu_get_reserved_device_memory(iommu_grdm_t *func, void *ctxt)
     return iommu_call(ops, get_reserved_device_memory, func, ctxt);
 }
 
-bool_t iommu_has_feature(struct domain *d, enum iommu_feature feature)
+bool iommu_has_feature(struct domain *d, enum iommu_feature feature)
 {
     return is_iommu_enabled(d) && test_bit(feature, dom_iommu(d)->features);
 }

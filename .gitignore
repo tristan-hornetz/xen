@@ -237,17 +237,6 @@ tools/xenmon/xentrace_setmask
 tools/xenmon/xenbaked
 tools/xenpaging/xenpaging
 tools/xenpmd/xenpmd
-tools/xenstore/xenstore
-tools/xenstore/xenstore-chmod
-tools/xenstore/xenstore-control
-tools/xenstore/xenstore-exists
-tools/xenstore/xenstore-list
-tools/xenstore/xenstore-ls
-tools/xenstore/xenstore-read
-tools/xenstore/xenstore-rm
-tools/xenstore/xenstore-watch
-tools/xenstore/xenstore-write
-tools/xenstore/xenstored
 tools/xentop/xentop
 tools/xentrace/xentrace_setsize
 tools/xentrace/tbctl
@@ -278,6 +267,7 @@ xen/arch/*/efi/efi.h
 xen/arch/*/efi/pe.c
 xen/arch/*/efi/runtime.c
 xen/arch/*/include/asm/asm-offsets.h
+xen/arch/*/include/generated
 xen/build-dir-cppcheck/
 xen/common/config_data.S
 xen/common/config.gz

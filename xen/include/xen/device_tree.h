@@ -18,6 +18,7 @@
 #include <xen/string.h>
 #include <xen/types.h>
 #include <xen/list.h>
+#include <xen/rwlock.h>
 
 #define DEVICE_TREE_MAX_DEPTH 16
 
@@ -179,6 +180,20 @@ int device_tree_for_each_node(const void *fdt, int node,
 void dt_unflatten_host_device_tree(void);
 
 /**
+ * unflatten_device_tree - create tree of device_nodes from flat blob
+ *
+ * unflattens a device-tree, creating the
+ * tree of struct device_node. It also fills the "name" and "type"
+ * pointers of the nodes so the normal device-tree walking functions
+ * can be used.
+ * @fdt: The fdt to expand
+ * @mynodes: The device_node tree created by the call
+ *
+ * Returns 0 on success and a negative number on error
+ */
+int unflatten_device_tree(const void *fdt, struct dt_device_node **mynodes);
+
+/**
  * IRQ translation callback
  * TODO: For the moment we assume that we only have ONE
  * interrupt-controller.
@@ -203,6 +218,12 @@ extern struct dt_device_node *dt_host;
  * TODO: Handle multiple GIC
  */
 extern const struct dt_device_node *dt_interrupt_controller;
+
+/*
+ * Lock that protects r/w updates to unflattened device tree i.e. dt_host during
+ * runtime. Lock may not be taken for boot only code.
+ */
+extern rwlock_t dt_host_lock;
 
 /**
  * Find the interrupt controller
@@ -538,7 +559,7 @@ bool_t dt_machine_is_compatible(const char *compat);
  * Returns a node pointer with refcount incremented, use
  * of_node_put() on it when done.
  */
-struct dt_device_node *dt_find_node_by_name(struct dt_device_node *node,
+struct dt_device_node *dt_find_node_by_name(struct dt_device_node *from,
                                             const char *name);
 
 /**
@@ -556,13 +577,26 @@ struct dt_device_node *dt_find_node_by_type(struct dt_device_node *from,
 struct dt_device_node *dt_find_node_by_alias(const char *alias);
 
 /**
- * dt_find_node_by_path - Find a node matching a full DT path
+ * dt_find_node_by_path_from - Generic function to find a node matching the
+ * full DT path for any given unflatten device tree
+ * @from: The device tree node to start searching from
  * @path: The full path to match
  *
  * Returns a node pointer.
  */
-struct dt_device_node *dt_find_node_by_path(const char *path);
+struct dt_device_node *dt_find_node_by_path_from(struct dt_device_node *from,
+                                                 const char *path);
 
+/**
+ * dt_find_node_by_path - Find a node matching a full DT path in dt_host
+ * @path: The full path to match
+ *
+ * Returns a node pointer.
+ */
+static inline struct dt_device_node *dt_find_node_by_path(const char *path)
+{
+    return dt_find_node_by_path_from(dt_host, path);
+}
 
 /**
  * dt_find_node_by_gpath - Same as dt_find_node_by_path but retrieve the
@@ -622,12 +656,12 @@ unsigned int dt_number_of_irq(const struct dt_device_node *device);
 
 /**
  * dt_number_of_address - Get the number of addresses for a device
- * @device: the device whose number of address is to be retrieved
+ * @dev: the device whose number of address is to be retrieved
  *
  * Return the number of address for this device or 0 if there is no
  * address or an error occurred.
  */
-unsigned int dt_number_of_address(const struct dt_device_node *device);
+unsigned int dt_number_of_address(const struct dt_device_node *dev);
 
 /**
  * dt_device_get_irq - Resolve an interrupt for a device
@@ -639,7 +673,7 @@ unsigned int dt_number_of_address(const struct dt_device_node *device);
  * device-tree node. It's the high level pendant to dt_device_get_raw_irq().
  */
 int dt_device_get_irq(const struct dt_device_node *device, unsigned int index,
-                      struct dt_irq *irq);
+                      struct dt_irq *out_irq);
 
 /**
  * dt_device_get_raw_irq - Resolve an interrupt for a device without translation
@@ -652,7 +686,7 @@ int dt_device_get_irq(const struct dt_device_node *device, unsigned int index,
  */
 int dt_device_get_raw_irq(const struct dt_device_node *device,
                           unsigned int index,
-                          struct dt_raw_irq *irq);
+                          struct dt_raw_irq *out_irq);
 
 /**
  * dt_irq_translate - Translate an irq
@@ -668,9 +702,9 @@ int dt_irq_translate(const struct dt_raw_irq *raw, struct dt_irq *out_irq);
  * @data: Caller data passed to callback
  */
 int dt_for_each_irq_map(const struct dt_device_node *dev,
-                        int (*cb)(const struct dt_device_node *,
-                                  const struct dt_irq *,
-                                  void *),
+                        int (*cb)(const struct dt_device_node *dev,
+                                  const struct dt_irq *dt_irq,
+                                  void *data),
                         void *data);
 
 /**
@@ -680,9 +714,9 @@ int dt_for_each_irq_map(const struct dt_device_node *dev,
  * @data: Caller data passed to callback
  */
 int dt_for_each_range(const struct dt_device_node *dev,
-                      int (*cb)(const struct dt_device_node *,
+                      int (*cb)(const struct dt_device_node *dev,
                                 uint64_t addr, uint64_t length,
-                                void *),
+                                void *data),
                       void *data);
 
 /**

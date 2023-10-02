@@ -532,7 +532,7 @@ static paddr_t __init find_memory(
 static int __init pvh_load_kernel(struct domain *d, const module_t *image,
                                   unsigned long image_headroom,
                                   module_t *initrd, void *image_base,
-                                  char *cmdline, paddr_t *entry,
+                                  const char *cmdline, paddr_t *entry,
                                   paddr_t *start_info_addr)
 {
     void *image_start = image_base + image_headroom;
@@ -712,13 +712,6 @@ static int __init pvh_setup_cpus(struct domain *d, paddr_t entry,
     if ( rc )
     {
         printk("Unable to setup Dom0 BSP context: %d\n", rc);
-        return rc;
-    }
-
-    rc = dom0_setup_permissions(d);
-    if ( rc )
-    {
-        panic("Unable to setup Dom0 permissions: %d\n", rc);
         return rc;
     }
 
@@ -1177,12 +1170,26 @@ static void __hwdom_init pvh_setup_mmcfg(struct domain *d)
 int __init dom0_construct_pvh(struct domain *d, const module_t *image,
                               unsigned long image_headroom,
                               module_t *initrd,
-                              char *cmdline)
+                              const char *cmdline)
 {
     paddr_t entry, start_info;
     int rc;
 
     printk(XENLOG_INFO "*** Building a PVH Dom%d ***\n", d->domain_id);
+
+    if ( is_hardware_domain(d) )
+    {
+        /*
+         * Setup permissions early so that calls to add MMIO regions to the
+         * p2m as part of vPCI setup don't fail due to permission checks.
+         */
+        rc = dom0_setup_permissions(d);
+        if ( rc )
+        {
+            printk("%pd unable to setup permissions: %d\n", d, rc);
+            return rc;
+        }
+    }
 
     /*
      * NB: MMCFG initialization needs to be performed before iommu

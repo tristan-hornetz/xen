@@ -49,7 +49,7 @@ static struct hpet_event_channel *__read_mostly hpet_events;
 /* msi hpet channels used for broadcast */
 static unsigned int __read_mostly num_hpets_used;
 
-DEFINE_PER_CPU(struct hpet_event_channel *, cpu_bc_channel);
+static DEFINE_PER_CPU(struct hpet_event_channel *, cpu_bc_channel);
 
 unsigned long __initdata hpet_address;
 int8_t __initdata opt_hpet_legacy_replacement = -1;
@@ -619,7 +619,7 @@ void __init cf_check hpet_broadcast_init(void)
          * math multiplication factor for nanosecond to hpet tick conversion.
          */
         hpet_events[i].mult = div_sc((unsigned long)hpet_rate,
-                                     1000000000ul, 32);
+                                     1000000000UL, 32);
         hpet_events[i].shift = 32;
         hpet_events[i].next_event = STIME_MAX;
         spin_lock_init(&hpet_events[i].lock);

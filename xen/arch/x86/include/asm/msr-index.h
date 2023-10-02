@@ -46,6 +46,7 @@
 
 #define MSR_PRED_CMD                        0x00000049
 #define  PRED_CMD_IBPB                      (_AC(1, ULL) <<  0)
+#define  PRED_CMD_SBPB                      (_AC(1, ULL) <<  7)
 
 #define MSR_PPIN_CTL                        0x0000004e
 #define  PPIN_LOCKOUT                       (_AC(1, ULL) <<  0)
@@ -86,6 +87,8 @@
 #define  ARCH_CAPS_RRSBA                    (_AC(1, ULL) << 19)
 #define  ARCH_CAPS_BHI_NO                   (_AC(1, ULL) << 20)
 #define  ARCH_CAPS_PBRSB_NO                 (_AC(1, ULL) << 24)
+#define  ARCH_CAPS_GDS_CTRL                 (_AC(1, ULL) << 25)
+#define  ARCH_CAPS_GDS_NO                   (_AC(1, ULL) << 26)
 
 #define MSR_FLUSH_CMD                       0x0000010b
 #define  FLUSH_CMD_L1D                      (_AC(1, ULL) <<  0)
@@ -104,6 +107,8 @@
 #define  MCU_OPT_CTRL_RTM_ALLOW             (_AC(1, ULL) <<  1)
 #define  MCU_OPT_CTRL_RTM_LOCKED            (_AC(1, ULL) <<  2)
 #define  MCU_OPT_CTRL_FB_CLEAR_DIS          (_AC(1, ULL) <<  3)
+#define  MCU_OPT_CTRL_GDS_MIT_DIS           (_AC(1, ULL) <<  4)
+#define  MCU_OPT_CTRL_GDS_MIT_LOCK          (_AC(1, ULL) <<  5)
 
 #define MSR_RTIT_OUTPUT_BASE                0x00000560
 #define MSR_RTIT_OUTPUT_MASK                0x00000561
@@ -151,6 +156,14 @@
 
 #define MSR_PKRS                            0x000006e1
 
+#define MSR_PM_ENABLE                       0x00000770
+#define  PM_ENABLE_HWP_ENABLE               BIT(0, ULL)
+
+#define MSR_HWP_CAPABILITIES                0x00000771
+#define MSR_HWP_INTERRUPT                   0x00000773
+#define MSR_HWP_REQUEST                     0x00000774
+#define MSR_HWP_STATUS                      0x00000777
+
 #define MSR_X2APIC_FIRST                    0x00000800
 #define MSR_X2APIC_LAST                     0x000008ff
 
@@ -164,6 +177,11 @@
 #define MSR_PASID                           0x00000d93
 #define  PASID_PASID_MASK                   0x000fffff
 #define  PASID_VALID                        (_AC(1, ULL) << 31)
+
+#define MSR_PKG_HDC_CTL                     0x00000db0
+#define  PKG_HDC_CTL_HDC_PKG_ENABLE         BIT(0, ULL)
+#define MSR_PM_CTL1                         0x00000db1
+#define  PM_CTL1_HDC_ALLOW_BLOCK            BIT(0, ULL)
 
 #define MSR_UARCH_MISC_CTRL                 0x00001b01
 #define  UARCH_CTRL_DOITM                   (_AC(1, ULL) <<  0)
@@ -210,6 +228,8 @@
 #define  VM_CR_SVM_DISABLE                  (_AC(1, ULL) <<  4)
 
 #define MSR_VIRT_SPEC_CTRL                  0xc001011f /* Layout matches MSR_SPEC_CTRL */
+
+#define MSR_AMD_CSTATE_CFG                  0xc0010296
 
 /*
  * Legacy MSR constants in need of cleanup.  No new MSRs below this comment.
@@ -334,7 +354,6 @@
 #define MSR_K7_EVNTSEL3			0xc0010003
 #define MSR_K7_PERFCTR3			0xc0010007
 #define MSR_K8_TOP_MEM1			0xc001001a
-#define MSR_K7_CLK_CTL			0xc001001b
 #define MSR_K8_TOP_MEM2			0xc001001d
 
 #define MSR_K8_HWCR			0xc0010015
@@ -427,46 +446,11 @@
 #define MSR_AMD_PPIN_CTL                0xc00102f0
 #define MSR_AMD_PPIN                    0xc00102f1
 
-/* K6 MSRs */
-#define MSR_K6_EFER			0xc0000080
-#define MSR_K6_STAR			0xc0000081
-#define MSR_K6_WHCR			0xc0000082
-#define MSR_K6_UWCCR			0xc0000085
-#define MSR_K6_EPMR			0xc0000086
-#define MSR_K6_PSOR			0xc0000087
-#define MSR_K6_PFIR			0xc0000088
-
-/* Centaur-Hauls/IDT defined MSRs. */
-#define MSR_IDT_FCR1			0x00000107
-#define MSR_IDT_FCR2			0x00000108
-#define MSR_IDT_FCR3			0x00000109
-#define MSR_IDT_FCR4			0x0000010a
-
-#define MSR_IDT_MCR0			0x00000110
-#define MSR_IDT_MCR1			0x00000111
-#define MSR_IDT_MCR2			0x00000112
-#define MSR_IDT_MCR3			0x00000113
-#define MSR_IDT_MCR4			0x00000114
-#define MSR_IDT_MCR5			0x00000115
-#define MSR_IDT_MCR6			0x00000116
-#define MSR_IDT_MCR7			0x00000117
-#define MSR_IDT_MCR_CTRL		0x00000120
-
 /* VIA Cyrix defined MSRs*/
 #define MSR_VIA_FCR			0x00001107
-#define MSR_VIA_LONGHAUL		0x0000110a
 #define MSR_VIA_RNG			0x0000110b
-#define MSR_VIA_BCR2			0x00001147
-
-/* Transmeta defined MSRs */
-#define MSR_TMTA_LONGRUN_CTRL		0x80868010
-#define MSR_TMTA_LONGRUN_FLAGS		0x80868011
-#define MSR_TMTA_LRTI_READOUT		0x80868018
-#define MSR_TMTA_LRTI_VOLT_MHZ		0x8086801a
 
 /* Intel defined MSRs. */
-#define MSR_IA32_P5_MC_ADDR		0x00000000
-#define MSR_IA32_P5_MC_TYPE		0x00000001
 #define MSR_IA32_TSC			0x00000010
 #define MSR_IA32_PLATFORM_ID		0x00000017
 #define MSR_IA32_EBL_CR_POWERON		0x0000002a
@@ -502,7 +486,8 @@
 #define MSR_IA32_MISC_ENABLE_MONITOR_ENABLE (1<<18)
 #define MSR_IA32_MISC_ENABLE_LIMIT_CPUID  (1<<22)
 #define MSR_IA32_MISC_ENABLE_XTPR_DISABLE (1<<23)
-#define MSR_IA32_MISC_ENABLE_XD_DISABLE   (_AC(1, ULL) << 34)
+#define MSR_IA32_MISC_ENABLE_XD_DISABLE      (_AC(1, ULL) << 34)
+#define MSR_IA32_MISC_ENABLE_TURBO_DISENGAGE (_AC(1, ULL) << 38)
 
 #define MSR_IA32_TSC_DEADLINE		0x000006E0
 #define MSR_IA32_ENERGY_PERF_BIAS	0x000001b0

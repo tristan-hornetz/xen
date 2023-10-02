@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef __PPC_CONFIG_H__
 #define __PPC_CONFIG_H__
 
@@ -39,11 +40,20 @@
     name:
 #endif
 
-#define XEN_VIRT_START _AT(UL, 0x400000)
+#define XEN_VIRT_START _AC(0xc000000000000000, UL)
+
+#define VMAP_VIRT_START (XEN_VIRT_START + GB(1))
+#define VMAP_VIRT_SIZE  GB(1)
+
+#define FRAMETABLE_VIRT_START  (XEN_VIRT_START + GB(32))
+#define FRAMETABLE_SIZE        GB(32)
+#define FRAMETABLE_NR          (FRAMETABLE_SIZE / sizeof(*frame_table))
+
+#define HYPERVISOR_VIRT_START  XEN_VIRT_START
 
 #define SMP_CACHE_BYTES (1 << 6)
 
-#define STACK_ORDER 2
+#define STACK_ORDER 0
 #define STACK_SIZE  (PAGE_SIZE << STACK_ORDER)
 
 /* 288 bytes below the stack pointer must be preserved by interrupt handlers */
@@ -51,6 +61,9 @@
 
 /* size of minimum stack frame; C code can write into the caller's stack */
 #define STACK_FRAME_OVERHEAD 32
+
+/* ELFv2 ABI mandates 16 byte alignment */
+#define STACK_ALIGN 16
 
 #endif /* __PPC_CONFIG_H__ */
 /*

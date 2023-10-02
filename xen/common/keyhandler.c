@@ -101,8 +101,8 @@ void handle_keypress(unsigned char key, struct cpu_user_regs *regs)
     }
 }
 
-void register_keyhandler(unsigned char key, keyhandler_fn_t fn,
-                         const char *desc, bool_t diagnostic)
+void register_keyhandler(unsigned char key, keyhandler_fn_t *fn,
+                         const char *desc, bool diagnostic)
 {
     BUG_ON(key >= ARRAY_SIZE(key_table)); /* Key in range? */
     ASSERT(!key_table[key].fn);           /* Clobbering something else? */
@@ -113,8 +113,8 @@ void register_keyhandler(unsigned char key, keyhandler_fn_t fn,
     key_table[key].diagnostic = diagnostic;
 }
 
-void register_irq_keyhandler(unsigned char key, irq_keyhandler_fn_t fn,
-                             const char *desc, bool_t diagnostic)
+void register_irq_keyhandler(unsigned char key, irq_keyhandler_fn_t *fn,
+                             const char *desc, bool diagnostic)
 {
     BUG_ON(key >= ARRAY_SIZE(key_table)); /* Key in range? */
     ASSERT(!key_table[key].irq_fn);       /* Clobbering something else? */
@@ -365,7 +365,9 @@ static void cf_check dump_domains(unsigned char key)
         }
     }
 
+#ifdef CONFIG_MEM_SHARING
     arch_dump_shared_mem_info();
+#endif
 
     rcu_read_unlock(&domlist_read_lock);
 }

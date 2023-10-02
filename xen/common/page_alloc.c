@@ -162,6 +162,8 @@
 #define PGT_TYPE_INFO_INITIALIZER 0
 #endif
 
+unsigned long __read_mostly max_page;
+unsigned long __read_mostly total_pages;
 paddr_t __ro_after_init mem_hotplug;
 
 /*
@@ -1208,6 +1210,14 @@ static unsigned int node_to_scrub(bool get_node)
             node = cycle_node(node, node_online_map);
         } while ( !cpumask_empty(&node_to_cpumask(node)) &&
                   (node != local_node) );
+
+        /*
+         * In practice `node` will always be within MAX_NUMNODES, but GCC can't
+         * always see that, so an explicit check is necessary to avoid tripping
+         * its out-of-bounds array access warning (-Warray-bounds).
+         */
+        if ( node >= MAX_NUMNODES )
+            break;
 
         if ( node == local_node )
             break;
@@ -2380,7 +2390,7 @@ int assign_pages(
         if ( unlikely(nr > d->max_pages - tot_pages) )
         {
             gprintk(XENLOG_INFO, "Over-allocation for %pd: %Lu > %u\n",
-                    d, tot_pages + 0ull + nr, d->max_pages);
+                    d, tot_pages + 0ULL + nr, d->max_pages);
             rc = -E2BIG;
             goto out;
         }
@@ -2392,7 +2402,7 @@ int assign_pages(
         {
             gprintk(XENLOG_INFO,
                     "Excess allocation for %pd: %Lu (%u extra)\n",
-                    d, d->tot_pages + 0ull + nr, d->extra_pages);
+                    d, d->tot_pages + 0ULL + nr, d->extra_pages);
             if ( pg[0].count_info & PGC_extra )
                 d->extra_pages -= nr;
             rc = -E2BIG;
@@ -2460,7 +2470,7 @@ struct page_info *alloc_domheap_pages(
         {
             unsigned long i;
 
-            for ( i = 0; i < (1ul << order); i++ )
+            for ( i = 0; i < (1UL << order); i++ )
             {
                 ASSERT(!pg[i].count_info);
                 pg[i].count_info = PGC_extra;

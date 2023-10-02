@@ -59,7 +59,7 @@ enum hvm_translation_result {
  * address range does not map entirely onto ordinary machine memory.
  */
 enum hvm_translation_result hvm_copy_to_guest_phys(
-    paddr_t paddr, void *buf, unsigned int size, struct vcpu *v);
+    paddr_t paddr, const void *buf, unsigned int size, struct vcpu *v);
 enum hvm_translation_result hvm_copy_from_guest_phys(
     void *buf, paddr_t paddr, unsigned int size);
 
@@ -85,7 +85,7 @@ typedef struct pagefault_info
 } pagefault_info_t;
 
 enum hvm_translation_result hvm_copy_to_guest_linear(
-    unsigned long addr, void *buf, unsigned int size, uint32_t pfec,
+    unsigned long addr, const void *buf, unsigned int size, uint32_t pfec,
     pagefault_info_t *pfinfo);
 enum hvm_translation_result hvm_copy_from_guest_linear(
     void *buf, unsigned long addr, unsigned int size, uint32_t pfec,
@@ -135,7 +135,7 @@ int hvm_descriptor_access_intercept(uint64_t exit_info,
                                     unsigned int descriptor, bool is_write);
 int hvm_mov_to_cr(unsigned int cr, unsigned int gpr);
 int hvm_mov_from_cr(unsigned int cr, unsigned int gpr);
-void hvm_ud_intercept(struct cpu_user_regs *);
+void hvm_ud_intercept(struct cpu_user_regs *regs);
 
 /*
  * May return X86EMUL_EXCEPTION, at which point the caller is responsible for

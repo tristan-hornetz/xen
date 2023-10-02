@@ -501,7 +501,8 @@ static int ioreq_server_alloc_rangesets(struct ioreq_server *s,
 
     for ( i = 0; i < NR_IO_RANGE_TYPES; i++ )
     {
-        char *name, *type;
+        const char *type;
+        char *name;
 
         switch ( i )
         {
@@ -1181,7 +1182,7 @@ static int ioreq_send_buffered(struct ioreq_server *s, ioreq_t *p)
      *  - the count field is usually used with data_is_ptr and since we don't
      *    support data_is_ptr we do not waste space for the count field either
      */
-    if ( (p->addr > 0xffffful) || p->data_is_ptr || (p->count != 1) )
+    if ( (p->addr > 0xfffffUL) || p->data_is_ptr || (p->count != 1) )
         return 0;
 
     switch ( p->size )

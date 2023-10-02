@@ -99,6 +99,10 @@ acpi_parse_x2apic(struct acpi_subtable_header *header, const unsigned long end)
 		log = true;
 	}
 
+	/* Ignore entries with invalid x2APIC ID */
+	if (processor->local_apic_id == 0xffffffff)
+		return 0;
+
 	/* Record local apic id only when enabled and fitting. */
 	if (processor->local_apic_id >= MAX_APICS ||
 	    processor->uid >= MAX_MADT_ENTRIES) {
@@ -152,6 +156,10 @@ acpi_parse_lapic(struct acpi_subtable_header * header, const unsigned long end)
 	if ((processor->lapic_flags & ACPI_MADT_ENABLED) ||
 	    processor->id != 0xff || opt_cpu_info)
 		acpi_table_print_madt_entry(header);
+
+	/* Ignore entries with invalid APIC ID */
+	if (processor->id == 0xff)
+		return 0;
 
 	/* Record local apic id only when enabled */
 	if (processor->lapic_flags & ACPI_MADT_ENABLED) {

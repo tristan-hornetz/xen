@@ -134,9 +134,6 @@ unsigned long directmap_base_pdx __read_mostly;
 unsigned long frametable_base_pdx __read_mostly;
 unsigned long frametable_virt_end __read_mostly;
 
-unsigned long max_page;
-unsigned long total_pages;
-
 extern char __init_begin[], __init_end[];
 
 /* Checking VA memory layout alignment. */
@@ -1295,10 +1292,6 @@ void free_init_memory(void)
 
     init_domheap_pages(pa, pa + len);
     printk("Freed %ldkB init memory.\n", (long)(__init_end-__init_begin)>>10);
-}
-
-void arch_dump_shared_mem_info(void)
-{
 }
 
 int steal_page(

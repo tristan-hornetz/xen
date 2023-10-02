@@ -8,7 +8,8 @@ SUBDIRS-y :=
 SUBDIRS-y += libs
 SUBDIRS-y += flask
 SUBDIRS-y += fuzz
-SUBDIRS-y += xenstore
+SUBDIRS-y += xs-clients
+SUBDIRS-$(XENSTORE_XENSTORED) += xenstored
 SUBDIRS-y += misc
 SUBDIRS-y += examples
 SUBDIRS-y += hotplug
@@ -18,7 +19,7 @@ SUBDIRS-$(CONFIG_X86) += firmware
 SUBDIRS-y += console
 SUBDIRS-y += xenmon
 SUBDIRS-$(XENSTAT_XENTOP) += xentop
-SUBDIRS-y += libfsimage
+SUBDIRS-$(CONFIG_LIBFSIMAGE) += libfsimage
 SUBDIRS-$(CONFIG_Linux) += vchan
 
 # do not recurse in to a dir we are about to delete
@@ -36,7 +37,7 @@ SUBDIRS-$(CONFIG_X86) += debugger
 SUBDIRS-$(CONFIG_TESTS) += tests
 
 SUBDIRS-y += python
-SUBDIRS-y += pygrub
+SUBDIRS-$(CONFIG_PYGRUB) += pygrub
 SUBDIRS-$(OCAML_TOOLS) += ocaml
 
 ifeq ($(CONFIG_RUMP),y)

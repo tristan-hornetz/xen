@@ -1215,6 +1215,8 @@ static int parse_virtio_config(libxl_device_virtio *virtio, char *token)
     } else if (MATCH_OPTION("transport", token, oparg)) {
         rc = libxl_virtio_transport_from_string(oparg, &virtio->transport);
         if (rc) return rc;
+    } else if (MATCH_OPTION("grant_usage", token, oparg)) {
+        libxl_defbool_set(&virtio->grant_usage, strtoul(oparg, NULL, 0));
     } else {
         fprintf(stderr, "Unknown string \"%s\" in virtio spec\n", token);
         return -1;
@@ -1690,6 +1692,15 @@ void parse_config_data(const char *config_source,
     xlu_cfg_get_defbool(config, "acpi", &b_info->acpi, 0);
 
     xlu_cfg_replace_string (config, "bootloader", &b_info->bootloader, 0);
+#ifndef HAVE_PYGRUB
+    if (b_info->bootloader &&
+        (!strcmp(b_info->bootloader, "pygrub") ||
+	 !strcmp(b_info->bootloader, "/usr/bin/pygrub"))) {
+        fprintf(stderr, "ERROR: this instance of Xen has been built without support of \"pygrub\".\n");
+        exit(-ERROR_FAIL);
+    }
+#endif
+
     switch (xlu_cfg_get_list_as_string_list(config, "bootloader_args",
                                             &b_info->bootloader_args, 1)) {
     case 0:
@@ -2619,6 +2630,9 @@ skip_usbdev:
                     break;
                 case 3:
                     errstr = "illegal CPUID value (must be: [0|1|x|k|s])";
+                    break;
+                case ERROR_NOMEM:
+                    errstr = "out of memory";
                     break;
                 default:
                     errstr = "unknown error";

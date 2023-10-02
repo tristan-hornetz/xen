@@ -44,7 +44,7 @@ DEFINE_PER_CPU_READ_MOSTLY(struct mca_banks *, no_cmci_banks);
 DEFINE_PER_CPU_READ_MOSTLY(struct mca_banks *, mce_clear_banks);
 
 static void intpose_init(void);
-static void mcinfo_clear(struct mc_info *);
+static void mcinfo_clear(struct mc_info *mi);
 struct mca_banks *mca_allbanks;
 
 #define SEG_PL(segsel)   ((segsel) & 0x3)
@@ -123,7 +123,7 @@ void mce_recoverable_register(mce_recoverable_t cbfunc)
     mc_recoverable_scan = cbfunc;
 }
 
-struct mca_banks *mcabanks_alloc(unsigned int nr_mce_banks)
+struct mca_banks *mcabanks_alloc(unsigned int nr)
 {
     struct mca_banks *mb;
 
@@ -135,18 +135,17 @@ struct mca_banks *mcabanks_alloc(unsigned int nr_mce_banks)
      * For APs allocations get done by the BSP, i.e. when the bank count may
      * may not be known yet. A zero bank count is a clear indication of this.
      */
-    if ( !nr_mce_banks )
-        nr_mce_banks = MCG_CAP_COUNT;
+    if ( !nr )
+        nr = MCG_CAP_COUNT;
 
-    mb->bank_map = xzalloc_array(unsigned long,
-                                 BITS_TO_LONGS(nr_mce_banks));
+    mb->bank_map = xzalloc_array(unsigned long, BITS_TO_LONGS(nr));
     if ( !mb->bank_map )
     {
         xfree(mb);
         return NULL;
     }
 
-    mb->num = nr_mce_banks;
+    mb->num = nr;
 
     return mb;
 }
@@ -600,7 +599,7 @@ unsigned int mce_firstbank(struct cpuinfo_x86 *c)
            c->x86_vendor == X86_VENDOR_INTEL && c->x86_model < 0x1a;
 }
 
-int show_mca_info(int inited, struct cpuinfo_x86 *c)
+static int show_mca_info(int inited, struct cpuinfo_x86 *c)
 {
     static enum mcheck_type g_type = mcheck_unset;
 
@@ -1706,7 +1705,7 @@ static void mc_panic_dump(void)
     dprintk(XENLOG_ERR, "End dump mc_info, %x mcinfo dumped\n", mcinfo_dumpped);
 }
 
-void mc_panic(char *s)
+void mc_panic(const char *s)
 {
     is_mc_panic = true;
     console_force_unlock();

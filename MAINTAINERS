@@ -301,9 +301,16 @@ M:	Julien Grall <julien@xen.org>
 S:	Supported
 F:	xen/common/libfdt/
 F:	xen/common/device_tree.c
+F:	xen/common/dt-overlay.c
 F:	xen/include/xen/libfdt/
 F:	xen/include/xen/device_tree.h
 F:	xen/drivers/passthrough/device_tree.c
+
+ECLAIR
+R:	Simone Ballarin <simone.ballarin@bugseng.com>
+S:	Supported
+F:	automation/eclair_analysis/
+F:	automation/scripts/eclair
 
 EFI
 M:	Jan Beulich <jbeulich@suse.com>
@@ -493,7 +500,7 @@ F:	tools/hotplug/Linux/block-drbd-probe
 
 RISCV
 M:	Bob Eshleman <bobbyeshleman@gmail.com>
-M:	Alistair Francis <alistair.francis@wdc.com>
+R:	Alistair Francis <alistair.francis@wdc.com>
 R:	Connor Davis <connojdavis@gmail.com>
 S:	Supported
 F:	config/riscv64.mk
@@ -552,14 +559,18 @@ R:	Alexandru Isaila <aisaila@bitdefender.com>
 R:	Petre Pircalabu <ppircalabu@bitdefender.com>
 S:	Supported
 F:	tools/misc/xen-access.c
+F:	xen/arch/*/*/mem_access.c
+F:	xen/arch/*/*/monitor.c
+F:	xen/arch/*/*/vm_event.c
+F:	xen/arch/*/include/asm/*/mem_access.h
+F:	xen/arch/*/include/asm/*/monitor.h
+F:	xen/arch/*/include/asm/*/vm_event.h
+F:	xen/arch/*/include/asm/mem_access.h
+F:	xen/arch/*/include/asm/monitor.h
+F:	xen/arch/*/include/asm/vm_event.h
+F:	xen/arch/*/mem_access.c
 F:	xen/arch/*/monitor.c
 F:	xen/arch/*/vm_event.c
-F:	xen/arch/arm/mem_access.c
-F:	xen/arch/x86/include/asm/hvm/monitor.h
-F:	xen/arch/x86/include/asm/hvm/vm_event.h
-F:	xen/arch/x86/mm/mem_access.c
-F:	xen/arch/x86/hvm/monitor.c
-F:	xen/arch/x86/hvm/vm_event.c
 F:	xen/common/mem_access.c
 F:	xen/common/monitor.c
 F:	xen/common/vm_event.c
@@ -595,6 +606,7 @@ F:	xen/arch/x86/
 F:	xen/include/public/arch-x86/
 F:	xen/include/xen/lib/x86
 F:	xen/lib/x86
+F:	xen/tools/gen-cpuid.py
 F:	tools/firmware/hvmloader/
 F:	tools/firmware/rombios/
 F:	tools/firmware/vgabios/
@@ -662,7 +674,8 @@ F:	tools/include/xenstore.h
 F:	tools/include/xenstore_lib.h
 F:	tools/include/xen-tools/xenstore-common.h
 F:	tools/libs/store/
-F:	tools/xenstore/
+F:	tools/xenstored/
+F:	tools/xs-clients/
 
 XENTRACE
 M:	George Dunlap <george.dunlap@citrix.com>

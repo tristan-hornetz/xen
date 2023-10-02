@@ -202,6 +202,9 @@ static const char *const str_e21a[32] =
     [ 8] = "auto-ibrs",
 
     /* 16 */                [17] = "cpuid-user-dis",
+
+    /* 26 */                [27] = "sbpb",
+    [28] = "ibpb-brtype",   [29] = "srso-no",
 };
 
 static const char *const str_7b1[32] =
@@ -241,7 +244,8 @@ static const char *const str_m10Al[32] =
     [18] = "fb-clear-ctrl",       [19] = "rrsba",
     [20] = "bhi-no",              [21] = "xapic-status",
     /* 22 */                      [23] = "ovrclk-status",
-    [24] = "pbrsb-no",
+    [24] = "pbrsb-no",            [25] = "gds-ctrl",
+    [26] = "gds-no",
 };
 
 static const char *const str_m10Ah[32] =

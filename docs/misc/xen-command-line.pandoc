@@ -499,7 +499,7 @@ If set, force use of the performance counters for oprofile, rather than detectin
 available support.
 
 ### cpufreq
-> `= none | {{ <boolean> | xen } [:[powersave|performance|ondemand|userspace][,<maxfreq>][,[<minfreq>][,[verbose]]]]} | dom0-kernel`
+> `= none | {{ <boolean> | xen } { [:[powersave|performance|ondemand|userspace][,[<maxfreq>]][,[<minfreq>]]] } [,verbose]} | dom0-kernel | hwp[:[<hdc>][,verbose]]`
 
 > Default: `xen`
 
@@ -510,6 +510,24 @@ choice of `dom0-kernel` is deprecated and not supported by all Dom0 kernels.
 * `<maxfreq>` and `<minfreq>` are integers which represent max and min processor frequencies
   respectively.
 * `verbose` option can be included as a string or also as `verbose=<integer>`
+  for `xen`.  It is a boolean for `hwp`.
+* `hwp` selects Hardware-Controlled Performance States (HWP) on supported Intel
+  hardware.  HWP is a Skylake+ feature which provides better CPU power
+  management.  The default is disabled.  If `hwp` is selected, but hardware
+  support is not available, Xen will fallback to cpufreq=xen.
+* `<hdc>` is a boolean to enable Hardware Duty Cycling (HDC).  HDC enables the
+  processor to autonomously force physical package components into idle state.
+  The default is enabled, but the option only applies when `hwp` is enabled.
+
+There is also support for `;`-separated fallback options:
+`cpufreq=hwp;xen,verbose`.  This first tries `hwp` and falls back to `xen` if
+unavailable.  Note: The `verbose` suboption is handled globally.  Setting it
+for either the primary or fallback option applies to both irrespective of where
+it is specified.
+
+Note: grub2 requires to escape or quote ';', so `"cpufreq=hwp;xen"` should be
+specified within double quotes inside grub.cfg.  Refer to the grub2
+documentation for more information.
 
 ### cpuid (x86)
 > `= List of comma separated booleans`
@@ -1612,6 +1630,16 @@ wait descriptor timed out', try increasing this value.
 **WARNING: This command line option is deprecated, and superseded by
 _dom0-iommu=map-inclusive_ - using both options in combination is undefined.**
 
+### irq-max-guests (x86)
+> `= <integer>`
+
+> Default: `32`
+
+Maximum number of guests any individual IRQ could be shared between,
+i.e. a limit on the number of guests it is possible to start each having
+assigned a device sharing a common interrupt line.  Accepts values between
+1 and 255.
+
 ### irq_ratelimit (x86)
 > `= <integer>`
 
@@ -1688,7 +1716,7 @@ This option is available for hypervisors built with CONFIG_DEBUG_LOCKS only.
 ### loglvl
 > `= <level>[/<rate-limited level>]` where level is `none | error | warning | info | debug | all`
 
-> Default: `loglvl=warning`
+> Default: `loglvl=info`
 
 > Can be modified at runtime
 
@@ -1856,6 +1884,14 @@ By default, Xen will use the INVPCID instruction for TLB management if
 it is available.  This option can be used to cause Xen to fall back to
 older mechanisms, which are generally slower.
 
+### load-balance-ratelimit
+> `= <integer>`
+
+The minimum interval between load balancing events on a given pcpu, in
+microseconds.  A value of '0' will disable rate limiting.  Maximum
+value 1 second. At the moment only credit honors this parameter.
+Default 1ms.
+
 ### noirqbalance (x86)
 > `= <boolean>`
 
@@ -1895,16 +1931,6 @@ This option is ignored in **pv-shim** mode.
 
 ### nr_irqs (x86)
 > `= <integer>`
-
-### irq-max-guests (x86)
-> `= <integer>`
-
-> Default: `32`
-
-Maximum number of guests any individual IRQ could be shared between,
-i.e. a limit on the number of guests it is possible to start each having
-assigned a device sharing a common interrupt line.  Accepts values between
-1 and 255.
 
 ### numa (x86)
 > `= on | off | fake=<integer> | noacpi`
@@ -1949,16 +1975,6 @@ If available, control usage of the PCID feature of the processor for
 for all of them (`true`), only for those subject to XPTI (`xpti`) or for
 those not subject to XPTI (`no-xpti`). The feature is used only in case
 INVPCID is supported and not disabled via `invpcid=false`.
-
-### pku (x86)
-> `= <boolean>`
-
-> Default: `true`
-
-Flag to enable Memory Protection Keys.
-
-The protection-key feature provides an additional mechanism by which IA-32e
-paging controls access to usermode addresses.
 
 ### ple_gap
 > `= <integer>`
@@ -2345,7 +2361,7 @@ By default SSBD will be mitigated at runtime (i.e `ssbd=runtime`).
 >              {msr-sc,rsb,md-clear,ibpb-entry}=<bool>|{pv,hvm}=<bool>,
 >              bti-thunk=retpoline|lfence|jmp, {ibrs,ibpb,ssbd,psfd,
 >              eager-fpu,l1d-flush,branch-harden,srb-lock,
->              unpriv-mmio}=<bool> ]`
+>              unpriv-mmio,gds-mit,div-scrub}=<bool> ]`
 
 Controls for speculative execution sidechannel mitigations.  By default, Xen
 will pick the most appropriate mitigations based on compiled in support,
@@ -2391,9 +2407,10 @@ guests to use.
   preference to here.*
 * `ibpb-entry=` offers control over whether IBPB (Indirect Branch Prediction
   Barrier) is used on entry to Xen.  This is used by default on hardware
-  vulnerable to Branch Type Confusion, but for performance reasons, dom0 is
-  unprotected by default.  If it necessary to protect dom0 too, boot with
-  `spec-ctrl=ibpb-entry`.
+  vulnerable to Branch Type Confusion, and hardware vulnerable to Speculative
+  Return Stack Overflow if appropriate microcode has been loaded, but for
+  performance reasons dom0 is unprotected by default.  If it is necessary to
+  protect dom0 too, boot with `spec-ctrl=ibpb-entry`.
 
 If Xen was compiled with INDIRECT_THUNK support, `bti-thunk=` can be used to
 select which of the thunks gets patched into the `__x86_indirect_thunk_%reg`
@@ -2457,6 +2474,18 @@ default, this option is disabled.  If enabled, Xen will use the `FB_CLEAR`
 and/or `SRBDS_CTRL` functionality available in the Intel May 2022 microcode
 release to mitigate cross-domain leakage of data via the MMIO Stale Data
 vulnerabilities.
+
+On all hardware, the `gds-mit=` option can be used to force or prevent Xen
+from mitigating the GDS (Gather Data Sampling) vulnerability.  By default, Xen
+will mitigate GDS on hardware believed to be vulnerable.  On hardware
+supporting GDS_CTRL (requires the August 2023 microcode), and where firmware
+has elected not to lock the configuration, Xen will use GDS_CTRL to mitigate
+GDS with.  Otherwise, Xen will mitigate by disabling AVX, which blocks the use
+of the AVX2 Gather instructions.
+
+On all hardware, the `div-scrub=` option can be used to force or prevent Xen
+from mitigating the DIV-leakage vulnerability.  By default, Xen will mitigate
+DIV-leakage on hardware believed to be vulnerable.
 
 ### sync_console
 > `= <boolean>`

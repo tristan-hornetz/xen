@@ -250,9 +250,9 @@ static void recalculate_xstate(struct cpu_policy *p)
     else
         xstates &= ~XSTATE_XSAVES_ONLY;
 
-    for ( i = 2; i < min(63ul, ARRAY_SIZE(p->xstate.comp)); ++i )
+    for ( i = 2; i < min(63UL, ARRAY_SIZE(p->xstate.comp)); ++i )
     {
-        uint64_t curr_xstate = 1ul << i;
+        uint64_t curr_xstate = 1UL << i;
 
         if ( !(xstates & curr_xstate) )
             continue;
@@ -434,6 +434,18 @@ static void __init guest_common_max_feature_adjustments(uint32_t *fs)
         __set_bit(X86_FEATURE_ARCH_CAPS, fs);
         __set_bit(X86_FEATURE_RSBA, fs);
         __set_bit(X86_FEATURE_RRSBA, fs);
+
+        /*
+         * The Gather Data Sampling microcode mitigation (August 2023) has an
+         * adverse performance impact on the CLWB instruction on SKX/CLX/CPX.
+         *
+         * We hid CLWB in the host policy to stop Xen using it, but VMs which
+         * have previously seen the CLWB feature can safely run on this CPU.
+         */
+        if ( boot_cpu_data.x86 == 6 &&
+             boot_cpu_data.x86_model == INTEL_FAM6_SKYLAKE_X &&
+             raw_cpu_policy.feat.clwb )
+            __set_bit(X86_FEATURE_CLWB, fs);
     }
 }
 
@@ -456,6 +468,19 @@ static void __init guest_common_default_feature_adjustments(uint32_t *fs)
              boot_cpu_data.x86_model == INTEL_FAM6_IVYBRIDGE &&
              cpu_has_rdrand && !is_forced_cpu_cap(X86_FEATURE_RDRAND) )
             __clear_bit(X86_FEATURE_RDRAND, fs);
+
+        /*
+         * The Gather Data Sampling microcode mitigation (August 2023) has an
+         * adverse performance impact on the CLWB instruction on SKX/CLX/CPX.
+         *
+         * We hid CLWB in the host policy to stop Xen using it, but re-added
+         * it to the max policy to let VMs migrate in.  Re-hide it in the
+         * default policy to disuade VMs from using it in the common case.
+         */
+        if ( boot_cpu_data.x86 == 6 &&
+             boot_cpu_data.x86_model == INTEL_FAM6_SKYLAKE_X &&
+             raw_cpu_policy.feat.clwb )
+            __clear_bit(X86_FEATURE_CLWB, fs);
     }
 
     /*
@@ -887,17 +912,6 @@ void __init init_dom0_cpuid_policy(struct domain *d)
     /* Dom0 doesn't migrate relative to Xen.  Give it ITSC if available. */
     if ( cpu_has_itsc )
         p->extd.itsc = true;
-
-    /*
-     * Expose the "hardware speculation behaviour" bits of ARCH_CAPS to dom0,
-     * so dom0 can turn off workarounds as appropriate.  Temporary, until the
-     * domain policy logic gains a better understanding of MSRs.
-     */
-    if ( is_hardware_domain(d) && cpu_has_arch_caps )
-    {
-        p->feat.arch_caps = true;
-        p->arch_caps.raw = host_cpu_policy.arch_caps.raw;
-    }
 
     /* Apply dom0-cpuid= command line settings, if provided. */
     if ( dom0_cpuid_cmdline )

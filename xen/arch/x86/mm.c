@@ -147,10 +147,6 @@ l1_pgentry_t __section(".bss.page_aligned") __aligned(PAGE_SIZE)
 l1_pgentry_t __section(".bss.page_aligned") __aligned(PAGE_SIZE)
     l1_fixmap_x[L1_PAGETABLE_ENTRIES];
 
-/* Frame table size in pages. */
-unsigned long max_page;
-unsigned long total_pages;
-
 bool __read_mostly machine_to_phys_mapping_valid;
 
 struct rangeset *__read_mostly mmio_ro_ranges;
@@ -554,15 +550,12 @@ void write_ptbase(struct vcpu *v)
  *
  * Update ref counts to shadow tables appropriately.
  */
-void update_cr3(struct vcpu *v)
+pagetable_t update_cr3(struct vcpu *v)
 {
     mfn_t cr3_mfn;
 
     if ( paging_mode_enabled(v->domain) )
-    {
-        paging_update_cr3(v, false);
-        return;
-    }
+        return paging_update_cr3(v, false);
 
     if ( !(v->arch.flags & TF_kernel_mode) )
         cr3_mfn = pagetable_get_mfn(v->arch.guest_table_user);
@@ -570,6 +563,8 @@ void update_cr3(struct vcpu *v)
         cr3_mfn = pagetable_get_mfn(v->arch.guest_table);
 
     make_cr3(v, cr3_mfn);
+
+    return pagetable_null();
 }
 
 static inline void set_tlbflush_timestamp(struct page_info *page)
@@ -3058,10 +3053,10 @@ static int _get_page_type(struct page_info *page, unsigned long type,
 
             if ( (x & PGT_type_mask) == PGT_writable_page )
                 rc = iommu_legacy_unmap(d, _dfn(mfn_x(mfn)),
-                                        1ul << PAGE_ORDER_4K);
+                                        1UL << PAGE_ORDER_4K);
             else
                 rc = iommu_legacy_map(d, _dfn(mfn_x(mfn)), mfn,
-                                      1ul << PAGE_ORDER_4K,
+                                      1UL << PAGE_ORDER_4K,
                                       IOMMUF_readable | IOMMUF_writable);
 
             if ( unlikely(rc) )
@@ -3274,6 +3269,7 @@ int new_guest_cr3(mfn_t mfn)
     struct domain *d = curr->domain;
     int rc;
     mfn_t old_base_mfn;
+    pagetable_t old_shadow;
 
     if ( is_pv_32bit_domain(d) )
     {
@@ -3341,9 +3337,22 @@ int new_guest_cr3(mfn_t mfn)
     if ( !VM_ASSIST(d, m2p_strict) )
         fill_ro_mpt(mfn);
     curr->arch.guest_table = pagetable_from_mfn(mfn);
-    update_cr3(curr);
+    old_shadow = update_cr3(curr);
 
-    write_ptbase(curr);
+    /*
+     * In shadow mode update_cr3() can fail, in which case here we're still
+     * running on the prior top-level shadow (which we're about to release).
+     * Switch to the idle page tables in such an event; the guest will have
+     * been crashed already.
+     */
+    if ( likely(!mfn_eq(pagetable_get_mfn(old_shadow),
+                        maddr_to_mfn(curr->arch.cr3 & ~X86_CR3_NOFLUSH))) )
+        write_ptbase(curr);
+    else
+        write_ptbase(idle_vcpu[curr->processor]);
+
+    if ( !pagetable_is_null(old_shadow) )
+        shadow_put_top_level(d, old_shadow);
 
     if ( likely(mfn_x(old_base_mfn) != 0) )
     {
@@ -6266,13 +6275,6 @@ void memguard_unguard_stack(void *p)
 
     p += PRIMARY_SHSTK_SLOT * PAGE_SIZE;
     map_pages_to_xen((unsigned long)p, virt_to_mfn(p), 1, PAGE_HYPERVISOR_RW);
-}
-
-void arch_dump_shared_mem_info(void)
-{
-    printk("Shared frames %u -- Saved frames %u\n",
-            mem_sharing_get_nr_shared_mfns(),
-            mem_sharing_get_nr_saved_mfns());
 }
 
 const struct platform_bad_page *__init get_platform_badpages(unsigned int *array_size)

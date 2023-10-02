@@ -1,8 +1,10 @@
+#include <xen/cpu.h>
 #include <xen/init.h>
 #include <xen/bitops.h>
 #include <xen/mm.h>
 #include <xen/param.h>
 #include <xen/smp.h>
+#include <xen/softirq.h>
 #include <xen/pci.h>
 #include <xen/sched.h>
 #include <xen/warning.h>
@@ -13,6 +15,7 @@
 #include <asm/spec_ctrl.h>
 #include <asm/acpi.h>
 #include <asm/apic.h>
+#include <asm/microcode.h>
 
 #include "cpu.h"
 
@@ -50,6 +53,8 @@ boolean_param("allow_unsafe", opt_allow_unsafe);
 bool __read_mostly amd_acpi_c1e_quirk;
 bool __ro_after_init amd_legacy_ssbd;
 bool __initdata amd_virt_spec_ctrl;
+
+static bool __read_mostly zen2_c6_disabled;
 
 static inline int rdmsr_amd_safe(unsigned int msr, unsigned int *lo,
 				 unsigned int *hi)
@@ -877,15 +882,13 @@ void amd_set_legacy_ssbd(bool enable)
  * non-branch instructions to be ignored.  It is to be set unilaterally in
  * newer microcode.
  *
- * This chickenbit is something unrelated on Zen1, and Zen1 vs Zen2 isn't a
- * simple model number comparison, so use STIBP as a heuristic to separate the
- * two uarches in Fam17h(AMD)/18h(Hygon).
+ * This chickenbit is something unrelated on Zen1.
  */
 void amd_init_spectral_chicken(void)
 {
 	uint64_t val, chickenbit = 1 << 1;
 
-	if (cpu_has_hypervisor || !boot_cpu_has(X86_FEATURE_AMD_STIBP))
+	if (cpu_has_hypervisor || !is_zen2_uarch())
 		return;
 
 	if (rdmsr_safe(MSR_AMD64_DE_CFG2, val) == 0 && !(val & chickenbit))
@@ -903,6 +906,102 @@ void __init detect_zen2_null_seg_behaviour(void)
 	if (base == 0)
 		setup_force_cpu_cap(X86_FEATURE_NSCB);
 
+}
+
+void amd_check_zenbleed(void)
+{
+	const struct cpu_signature *sig = &this_cpu(cpu_sig);
+	unsigned int good_rev;
+	uint64_t val, old_val, chickenbit = (1 << 9);
+
+	/*
+	 * If we're virtualised, we can't do family/model checks safely, and
+	 * we likely wouldn't have access to DE_CFG even if we could see a
+	 * microcode revision.
+	 *
+	 * A hypervisor may hide AVX as a stopgap mitigation.  We're not in a
+	 * position to care either way.  An admin doesn't want to be disabling
+	 * AVX as a mitigation on any build of Xen with this logic present.
+	 */
+	if (cpu_has_hypervisor || boot_cpu_data.x86 != 0x17)
+		return;
+
+	switch (boot_cpu_data.x86_model) {
+	case 0x30 ... 0x3f: good_rev = 0x0830107a; break;
+	case 0x60 ... 0x67: good_rev = 0x0860010b; break;
+	case 0x68 ... 0x6f: good_rev = 0x08608105; break;
+	case 0x70 ... 0x7f: good_rev = 0x08701032; break;
+	case 0xa0 ... 0xaf: good_rev = 0x08a00008; break;
+	default:
+		/*
+		 * With the Fam17h check above, most parts getting here are
+		 * Zen1.  They're not affected.  Assume Zen2 ones making it
+		 * here are affected regardless of microcode version.
+		 */
+		if (is_zen1_uarch())
+			return;
+		good_rev = ~0U;
+		break;
+	}
+
+	rdmsrl(MSR_AMD64_DE_CFG, val);
+	old_val = val;
+
+	/*
+	 * Microcode is the preferred mitigation, in terms of performance.
+	 * However, without microcode, this chickenbit (specific to the Zen2
+	 * uarch) disables Floating Point Mov-Elimination to mitigate the
+	 * issue.
+	 */
+	val &= ~chickenbit;
+	if (sig->rev < good_rev)
+		val |= chickenbit;
+
+	if (val == old_val)
+		/* Nothing to change. */
+		return;
+
+	/*
+	 * DE_CFG is a Core-scoped MSR, and this write is racy during late
+	 * microcode load.  However, both threads calculate the new value from
+	 * state which is shared, and unrelated to the old value, so the
+	 * result should be consistent.
+	 */
+	wrmsrl(MSR_AMD64_DE_CFG, val);
+
+	/*
+	 * Inform the admin that we changed something, but don't spam,
+	 * especially during a late microcode load.
+	 */
+	if (smp_processor_id() == 0)
+		printk(XENLOG_INFO "Zenbleed mitigation - using %s\n",
+		       val & chickenbit ? "chickenbit" : "microcode");
+}
+
+static void cf_check zen2_disable_c6(void *arg)
+{
+	/* Disable C6 by clearing the CCR{0,1,2}_CC6EN bits. */
+	const uint64_t mask = ~((1ul << 6) | (1ul << 14) | (1ul << 22));
+	uint64_t val;
+
+	if (!zen2_c6_disabled) {
+		printk(XENLOG_WARNING
+    "Disabling C6 after 1000 days apparent uptime due to AMD errata 1474\n");
+		zen2_c6_disabled = true;
+		/*
+		 * Prevent CPU hotplug so that started CPUs will either see
+		 * zen2_c6_disabled set, or will be handled by
+		 * smp_call_function().
+		 */
+		while (!get_cpu_maps())
+			process_pending_softirqs();
+		smp_call_function(zen2_disable_c6, NULL, 0);
+		put_cpu_maps();
+	}
+
+	/* Update the MSR to disable C6, done on all threads. */
+	rdmsrl(MSR_AMD_CSTATE_CFG, val);
+	wrmsrl(MSR_AMD_CSTATE_CFG, val & mask);
 }
 
 static void cf_check init_amd(struct cpuinfo_x86 *c)
@@ -1171,6 +1270,11 @@ static void cf_check init_amd(struct cpuinfo_x86 *c)
 	if ((smp_processor_id() == 1) && !cpu_has(c, X86_FEATURE_ITSC))
 		disable_c1_ramping();
 
+	amd_check_zenbleed();
+
+	if (zen2_c6_disabled)
+		zen2_disable_c6(NULL);
+
 	check_syscfg_dram_mod_en();
 
 	amd_log_freq(c);
@@ -1180,3 +1284,39 @@ const struct cpu_dev amd_cpu_dev = {
 	.c_early_init	= early_init_amd,
 	.c_init		= init_amd,
 };
+
+static int __init cf_check zen2_c6_errata_check(void)
+{
+	/*
+	 * Errata #1474: A Core May Hang After About 1044 Days
+	 * Set up a timer to disable C6 after 1000 days uptime.
+	 */
+	s_time_t delta;
+
+	if (cpu_has_hypervisor || boot_cpu_data.x86 != 0x17 || !is_zen2_uarch())
+		return 0;
+
+	/*
+	 * Deduct current TSC value, this would be relevant if kexec'ed for
+	 * example.  Might not be accurate, but worst case we end up disabling
+	 * C6 before strictly required, which would still be safe.
+	 *
+	 * NB: all affected models (Zen2) have invariant TSC and TSC adjust
+	 * MSR, so early_time_init() will have already cleared any TSC offset.
+	 */
+	delta = DAYS(1000) - tsc_ticks2ns(rdtsc());
+	if (delta > 0) {
+		static struct timer errata_c6;
+
+		init_timer(&errata_c6, zen2_disable_c6, NULL, 0);
+		set_timer(&errata_c6, NOW() + delta);
+	} else
+		zen2_disable_c6(NULL);
+
+	return 0;
+}
+/*
+ * Must be executed after early_time_init() for tsc_ticks2ns() to have been
+ * calibrated.  That prevents us doing the check in init_amd().
+ */
+presmp_initcall(zen2_c6_errata_check);

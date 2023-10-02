@@ -28,7 +28,7 @@ CHECK_feature_info;
 
 enum system_state system_state = SYS_STATE_early_boot;
 
-xen_commandline_t saved_cmdline;
+static xen_commandline_t saved_cmdline;
 static const char __initconst opt_builtin_cmdline[] = CONFIG_CMDLINE;
 
 static int assign_integer_param(const struct kernel_param *param, uint64_t val)
@@ -397,9 +397,9 @@ char *print_tainted(char *str)
     return str;
 }
 
-void add_taint(unsigned int flag)
+void add_taint(unsigned int taint)
 {
-    tainted |= flag;
+    tainted |= taint;
 }
 
 extern const initcall_t __initcall_start[], __presmp_initcall_end[],

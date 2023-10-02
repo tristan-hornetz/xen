@@ -1158,6 +1158,8 @@ static int transfer_pages_to_heap(struct mem_hotadd_info *info)
 static int mem_hotadd_check(unsigned long spfn, unsigned long epfn)
 {
     unsigned long s, e, length, sidx, eidx;
+    paddr_t mem_base = pfn_to_paddr(spfn);
+    unsigned long mem_npages = epfn - spfn;
 
     if ( (spfn >= epfn) )
         return 0;
@@ -1168,7 +1170,7 @@ static int mem_hotadd_check(unsigned long spfn, unsigned long epfn)
     if ( (spfn | epfn) & ((1UL << PAGETABLE_ORDER) - 1) )
         return 0;
 
-    if ( (spfn | epfn) & pfn_hole_mask )
+    if ( !pdx_is_region_compressible(mem_base, mem_npages) )
         return 0;
 
     /* Make sure the new range is not present now */
@@ -1207,7 +1209,7 @@ static int mem_hotadd_check(unsigned long spfn, unsigned long epfn)
 
     length += (e - s) * sizeof(struct page_info);
 
-    if ((length >> PAGE_SHIFT) > (epfn - spfn))
+    if ( (length >> PAGE_SHIFT) > mem_npages )
         return 0;
 
     return 1;
@@ -1313,7 +1315,7 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
     {
         for ( i = spfn; i < epfn; i++ )
             if ( iommu_legacy_map(hardware_domain, _dfn(i), _mfn(i),
-                                  1ul << PAGE_ORDER_4K,
+                                  1UL << PAGE_ORDER_4K,
                                   IOMMUF_readable | IOMMUF_writable) )
                 break;
         if ( i != epfn )
@@ -1321,7 +1323,7 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
             while (i-- > old_max)
                 /* If statement to satisfy __must_check. */
                 if ( iommu_legacy_unmap(hardware_domain, _dfn(i),
-                                        1ul << PAGE_ORDER_4K) )
+                                        1UL << PAGE_ORDER_4K) )
                     continue;
 
             goto destroy_m2p;

@@ -131,7 +131,7 @@ static void ctxt_switch_from(struct vcpu *p)
     p->arch.ttbr1 = READ_SYSREG64(TTBR1_EL1);
     if ( is_32bit_domain(p->domain) )
         p->arch.dacr = READ_SYSREG(DACR32_EL2);
-    p->arch.par = READ_SYSREG64(PAR_EL1);
+    p->arch.par = read_sysreg_par();
 #if defined(CONFIG_ARM_32)
     p->arch.mair0 = READ_CP32(MAIR0);
     p->arch.mair1 = READ_CP32(MAIR1);
@@ -694,7 +694,8 @@ int arch_domain_create(struct domain *d,
                        struct xen_domctl_createdomain *config,
                        unsigned int flags)
 {
-    int rc, count = 0;
+    unsigned int count = 0;
+    int rc;
 
     BUILD_BUG_ON(GUEST_MAX_VCPUS < MAX_VIRT_CPUS);
 
@@ -791,6 +792,46 @@ fail:
     arch_domain_destroy(d);
 
     return rc;
+}
+
+int arch_domain_teardown(struct domain *d)
+{
+    int ret = 0;
+
+    BUG_ON(!d->is_dying);
+
+    /* See domain_teardown() for an explanation of all of this magic. */
+    switch ( d->teardown.arch_val )
+    {
+#define PROGRESS(x)                             \
+        d->teardown.arch_val = PROG_ ## x;      \
+        fallthrough;                            \
+    case PROG_ ## x
+
+        enum {
+            PROG_none,
+            PROG_tee,
+            PROG_done,
+        };
+
+    case PROG_none:
+        BUILD_BUG_ON(PROG_none != 0);
+
+    PROGRESS(tee):
+        ret = tee_domain_teardown(d);
+        if ( ret )
+            return ret;
+
+    PROGRESS(done):
+        break;
+
+#undef PROGRESS
+
+    default:
+        BUG();
+    }
+
+    return 0;
 }
 
 void arch_domain_destroy(struct domain *d)
