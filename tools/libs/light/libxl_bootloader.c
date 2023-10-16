@@ -14,6 +14,7 @@
 
 #include "libxl_osdeps.h" /* must come before any other headers */
 
+#include <pwd.h>
 #include <termios.h>
 #ifdef HAVE_UTMP_H
 #include <utmp.h>
@@ -29,6 +30,8 @@ static void bootloader_keystrokes_copyfail(libxl__egc *egc,
        libxl__datacopier_state *dc, int rc, int onwrite, int errnoval);
 static void bootloader_display_copyfail(libxl__egc *egc,
        libxl__datacopier_state *dc, int rc, int onwrite, int errnoval);
+static void bootloader_timeout(libxl__egc *egc, libxl__ev_time *ev,
+                               const struct timeval *requested_abs, int rc);
 static void bootloader_domaindeath(libxl__egc*, libxl__domaindeathcheck *dc,
                                    int rc);
 static void bootloader_finished(libxl__egc *egc, libxl__ev_child *child,
@@ -42,8 +45,71 @@ static void bootloader_arg(libxl__bootloader_state *bl, const char *arg)
     bl->args[bl->nargs++] = arg;
 }
 
-static void make_bootloader_args(libxl__gc *gc, libxl__bootloader_state *bl,
-                                 const char *bootloader_path)
+static int bootloader_uid(libxl__gc *gc, domid_t guest_domid,
+                          const char *user, uid_t *intended_uid)
+{
+    struct passwd *user_base, user_pwbuf;
+    int rc;
+
+    if (user) {
+        rc = userlookup_helper_getpwnam(gc, user, &user_pwbuf, &user_base);
+        if (rc) return rc;
+
+        if (!user_base) {
+            LOGD(ERROR, guest_domid, "Couldn't find user %s", user);
+            return ERROR_INVAL;
+        }
+
+        *intended_uid = user_base->pw_uid;
+        return 0;
+    }
+
+    /* Re-use QEMU user range for the bootloader. */
+    rc = userlookup_helper_getpwnam(gc, LIBXL_QEMU_USER_RANGE_BASE,
+                                    &user_pwbuf, &user_base);
+    if (rc) return rc;
+
+    if (user_base) {
+        struct passwd *user_clash, user_clash_pwbuf;
+        uid_t temp_uid = user_base->pw_uid + guest_domid;
+
+        rc = userlookup_helper_getpwuid(gc, temp_uid, &user_clash_pwbuf,
+                                        &user_clash);
+        if (rc) return rc;
+
+        if (user_clash) {
+            LOGD(ERROR, guest_domid,
+                 "wanted to use uid %ld (%s + %d) but that is user %s !",
+                 (long)temp_uid, LIBXL_QEMU_USER_RANGE_BASE,
+                 guest_domid, user_clash->pw_name);
+            return ERROR_INVAL;
+        }
+
+        *intended_uid = temp_uid;
+        return 0;
+    }
+
+    rc = userlookup_helper_getpwnam(gc, LIBXL_QEMU_USER_SHARED, &user_pwbuf,
+                                    &user_base);
+    if (rc) return rc;
+
+    if (user_base) {
+        LOGD(WARN, guest_domid, "Could not find user %s, falling back to %s",
+             LIBXL_QEMU_USER_RANGE_BASE, LIBXL_QEMU_USER_SHARED);
+        *intended_uid = user_base->pw_uid;
+
+        return 0;
+    }
+
+    LOGD(ERROR, guest_domid,
+    "Could not find user %s or range base pseudo-user %s, cannot restrict",
+         LIBXL_QEMU_USER_SHARED, LIBXL_QEMU_USER_RANGE_BASE);
+
+    return ERROR_INVAL;
+}
+
+static int make_bootloader_args(libxl__gc *gc, libxl__bootloader_state *bl,
+                                const char *bootloader_path)
 {
     const libxl_domain_build_info *info = bl->info;
 
@@ -61,6 +127,22 @@ static void make_bootloader_args(libxl__gc *gc, libxl__bootloader_state *bl,
         ARG(GCSPRINTF("--ramdisk=%s", info->ramdisk));
     if (info->cmdline && *info->cmdline != '\0')
         ARG(GCSPRINTF("--args=%s", info->cmdline));
+    if (libxl_defbool_val(info->bootloader_restrict)) {
+        uid_t uid = -1;
+        int rc = bootloader_uid(gc, bl->domid, info->bootloader_user,
+                                &uid);
+
+        if (rc) return rc;
+
+        assert(uid != -1);
+        if (!uid) {
+            LOGD(ERROR, bl->domid, "bootloader restrict UID is 0 (root)!");
+            return ERROR_INVAL;
+        }
+        LOGD(DEBUG, bl->domid, "using uid %ld", (long)uid);
+        ARG(GCSPRINTF("--runas=%ld", (long)uid));
+        ARG("--quiet");
+    }
 
     ARG(GCSPRINTF("--output=%s", bl->outputpath));
     ARG("--output-format=simple0");
@@ -79,6 +161,7 @@ static void make_bootloader_args(libxl__gc *gc, libxl__bootloader_state *bl,
     /* Sentinel for execv */
     ARG(NULL);
 
+    return 0;
 #undef ARG
 }
 
@@ -215,6 +298,7 @@ void libxl__bootloader_init(libxl__bootloader_state *bl)
     bl->ptys[0].master = bl->ptys[0].slave = 0;
     bl->ptys[1].master = bl->ptys[1].slave = 0;
     libxl__ev_child_init(&bl->child);
+    libxl__ev_time_init(&bl->time);
     libxl__domaindeathcheck_init(&bl->deathcheck);
     bl->keystrokes.ao = bl->ao;  libxl__datacopier_init(&bl->keystrokes);
     bl->display.ao = bl->ao;     libxl__datacopier_init(&bl->display);
@@ -232,6 +316,7 @@ static void bootloader_cleanup(libxl__egc *egc, libxl__bootloader_state *bl)
     libxl__domaindeathcheck_stop(gc,&bl->deathcheck);
     libxl__datacopier_kill(&bl->keystrokes);
     libxl__datacopier_kill(&bl->display);
+    libxl__ev_time_deregister(gc, &bl->time);
     for (i=0; i<2; i++) {
         libxl__carefd_close(bl->ptys[i].master);
         libxl__carefd_close(bl->ptys[i].slave);
@@ -293,6 +378,7 @@ static void bootloader_stop(libxl__egc *egc,
 
     libxl__datacopier_kill(&bl->keystrokes);
     libxl__datacopier_kill(&bl->display);
+    libxl__ev_time_deregister(gc, &bl->time);
     if (libxl__ev_child_inuse(&bl->child)) {
         r = kill(bl->child.pid, SIGTERM);
         if (r) LOGED(WARN, bl->domid, "%sfailed to kill bootloader [%lu]",
@@ -443,7 +529,8 @@ static void bootloader_disk_attached_cb(libxl__egc *egc,
             bootloader = bltmp;
     }
 
-    make_bootloader_args(gc, bl, bootloader);
+    rc = make_bootloader_args(gc, bl, bootloader);
+    if (rc) goto out;
 
     bl->openpty.ao = ao;
     bl->openpty.callback = bootloader_gotptys;
@@ -553,6 +640,25 @@ static void bootloader_gotptys(libxl__egc *egc, libxl__openpty_state *op)
         LOGD(DEBUG, bl->domid, "  bootloader arg: %s", *blarg);
 
     struct termios termattr;
+    const libxl_domain_build_info *info = bl->info;
+
+    if (libxl_defbool_val(info->bootloader_restrict)) {
+        const char *timeout_env = getenv("LIBXL_BOOTLOADER_TIMEOUT");
+        int timeout = timeout_env ? atoi(timeout_env)
+                                  : LIBXL_BOOTLOADER_TIMEOUT;
+
+        if (timeout) {
+            /* Set execution timeout */
+            rc = libxl__ev_time_register_rel(ao, &bl->time,
+                                            bootloader_timeout,
+                                            timeout * 1000);
+            if (rc) {
+                LOGED(ERROR, bl->domid,
+                      "unable to register timeout for bootloader execution");
+                goto out;
+            }
+        }
+    }
 
     pid_t pid = libxl__ev_child_fork(gc, &bl->child, bootloader_finished);
     if (pid == -1) {
@@ -619,6 +725,21 @@ static void bootloader_display_copyfail(libxl__egc *egc,
     libxl__bootloader_state *bl = CONTAINER_OF(dc, *bl, display);
     bootloader_copyfail(egc, "bootloader output", bl, 1, rc,onwrite,errnoval);
 }
+static void bootloader_timeout(libxl__egc *egc, libxl__ev_time *ev,
+                               const struct timeval *requested_abs, int rc)
+{
+    libxl__bootloader_state *bl = CONTAINER_OF(ev, *bl, time);
+    STATE_AO_GC(bl->ao);
+
+    libxl__ev_time_deregister(gc, &bl->time);
+
+    assert(libxl__ev_child_inuse(&bl->child));
+    LOGD(ERROR, bl->domid, "killing bootloader because of timeout");
+
+    libxl__ev_child_kill_deregister(ao, &bl->child, SIGKILL);
+
+    bootloader_callback(egc, bl, rc);
+}
 
 static void bootloader_domaindeath(libxl__egc *egc,
                                    libxl__domaindeathcheck *dc,
@@ -635,6 +756,7 @@ static void bootloader_finished(libxl__egc *egc, libxl__ev_child *child,
     STATE_AO_GC(bl->ao);
     int rc;
 
+    libxl__ev_time_deregister(gc, &bl->time);
     libxl__datacopier_kill(&bl->keystrokes);
     libxl__datacopier_kill(&bl->display);
 

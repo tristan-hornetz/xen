@@ -382,8 +382,14 @@ int pv_shim_shutdown(uint8_t reason)
 
     for_each_vcpu ( d, v )
     {
-        /* Unmap guest vcpu_info pages. */
-        unmap_vcpu_info(v);
+        /* Unmap guest vcpu_info page and runstate/time areas. */
+        unmap_guest_area(v, &v->vcpu_info_area);
+        unmap_guest_area(v, &v->runstate_guest_area);
+        unmap_guest_area(v, &v->arch.time_guest_area);
+
+        /* Zap runstate and time area handles. */
+        set_xen_guest_handle(runstate_guest(v), NULL);
+        set_xen_guest_handle(v->arch.time_info_guest, NULL);
 
         /* Reset the periodic timer to the default value. */
         vcpu_set_periodic_timer(v, MILLISECS(10));

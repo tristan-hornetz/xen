@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
    known user doesn't use it properly, leading to in-guest breakage.
  - The "dom0" option is now supported on Arm and "sve=" sub-option can be used
    to enable dom0 guest to use SVE/SVE2 instructions.
+ - Physical CPU Hotplug downgraded to Experimental and renamed "ACPI CPU
+   Hotplug" for clarity
 
 ### Added
  - On x86, support for features new in Intel Sapphire Rapids CPUs:
@@ -29,11 +31,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
  - Add Intel Hardware P-States (HWP) cpufreq driver.
  - On Arm, experimental support for dynamic addition/removal of Xen device tree
    nodes using a device tree overlay binary (.dtbo).
+ - Introduce two new hypercalls to map the vCPU runstate and time areas by
+   physical rather than linear/virtual addresses.
 
 ### Removed
  - On x86, the "pku" command line option has been removed.  It has never
    behaved precisely as described, and was redundant with the unsupported
    "cpuid=no-pku".  Visibility of PKU to guests should be via its vm.cfg file.
+ - xenpvnetboot removed as unable to convert to Python 3.
 
 ## [4.17.0](https://xenbits.xen.org/gitweb/?p=xen.git;a=shortlog;h=RELEASE-4.17.0) - 2022-12-12
 
