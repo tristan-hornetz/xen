@@ -24,6 +24,8 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     if ( unlikely(!p2m) )
         return -EFAULT;
 
+    gdprintk(XENLOG_WARNING, "Entered set_xom_seal with gfn 0x%lx for %u pages. Max mapped page is 0x%lx\n", gfn.gfn , nr_pages, p2m->max_mapped_pfn);
+
     if (!nr_pages)
         return -EINVAL;
 
@@ -62,6 +64,8 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     if ( unlikely(!p2m) )
         return -EFAULT;
 
+    gdprintk(XENLOG_WARNING, "Entered clear_xom_seal with gfn 0x%lx for %u pages. Max mapped page is 0x%lx\n", gfn.gfn , nr_pages, p2m->max_mapped_pfn);
+
     if (!nr_pages)
         return -EINVAL;
 
@@ -85,7 +89,7 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
             goto exit;
         }
 
-        // Check whether the provided gfn is actually a XOM page
+        // Check whether the provided gfn is actually an XOM page
         p2m->get_entry(p2m, c_gfn, &ptype, &atype, 0, NULL, NULL);
         if (atype != p2m_access_x) {
             put_page(page);
@@ -139,7 +143,7 @@ int handle_xom_seal(struct vcpu* curr,
                 rc = clear_xom_seal(d, _gfn(op.arg1.mfn), op.arg2.nr_ents);
                 break;
             default:
-                rc =  -EOPNOTSUPP;
+                rc = -EOPNOTSUPP;
         }
 
         guest_handle_add_offset(uops, 1);

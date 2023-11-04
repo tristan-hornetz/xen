@@ -3470,7 +3470,6 @@ long do_mmuext_op(
 
     if ( !is_pv_domain(pg_owner) )
     {
-        gdprintk(XENLOG_WARNING, "Page owner is not a PV domain\n");
         rc = handle_xom_seal(curr, uops, count, pdone);
         put_pg_owner(pg_owner);
         return rc;
