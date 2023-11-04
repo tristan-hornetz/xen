@@ -488,14 +488,33 @@ int __init dom0_setup_permissions(struct domain *d)
     rc |= ioports_deny_access(d, 0x40, 0x43);
     /* PIT Channel 2 / PC Speaker Control. */
     rc |= ioports_deny_access(d, 0x61, 0x61);
+
+    /* INIT# and alternative A20M# control. */
+    rc |= ioports_deny_access(d, 0x92, 0x92);
+
+    /* IGNNE# control. */
+    rc |= ioports_deny_access(d, 0xF0, 0xF0);
+
     /* ACPI PM Timer. */
     if ( pmtmr_ioport )
         rc |= ioports_deny_access(d, pmtmr_ioport, pmtmr_ioport + 3);
-    /* PCI configuration space (NB. 0xcf8 has special treatment). */
-    rc |= ioports_deny_access(d, 0xcfc, 0xcff);
+
+    /* Reset control. */
+    rc |= ioports_deny_access(d, 0xCF9, 0xCF9);
+
+    /* PCI configuration space (NB. 0xCF8 has special treatment). */
+    rc |= ioports_deny_access(d, 0xCFC, 0xCFF);
+
 #ifdef CONFIG_HVM
     if ( is_hvm_domain(d) )
     {
+        /* ISA DMA controller, channels 0-3 (incl possible aliases). */
+        rc |= ioports_deny_access(d, 0x00, 0x1F);
+        /* ISA DMA controller, page registers (incl various reserved ones). */
+        rc |= ioports_deny_access(d, 0x80 + !!hvm_port80_allowed, 0x8F);
+        /* ISA DMA controller, channels 4-7 (incl usual aliases). */
+        rc |= ioports_deny_access(d, 0xC0, 0xDF);
+
         /* HVM debug console IO port. */
         rc |= ioports_deny_access(d, XEN_HVM_DEBUGCONS_IOPORT,
                                   XEN_HVM_DEBUGCONS_IOPORT);

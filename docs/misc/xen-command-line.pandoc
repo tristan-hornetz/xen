@@ -788,6 +788,17 @@ Specify the size of the console debug trace buffer. By specifying `cpu:`
 additionally a trace buffer of the specified size is allocated per cpu.
 The debug trace feature is only enabled in debugging builds of Xen.
 
+### dit (x86/Intel)
+> `= <boolean>`
+
+> Default: `CONFIG_DIT_DEFAULT`
+
+Specify whether Xen and guests should operate in Data Independent Timing
+mode (Intel calls this DOITM, Data Operand Independent Timing Mode). Note
+that enabling this option cannot guarantee anything beyond what underlying
+hardware guarantees (with, where available and known to Xen, respective
+tweaks applied).
+
 ### dma_bits
 > `= <integer>`
 
@@ -1469,7 +1480,8 @@ detection of systems known to misbehave upon accesses to that port.
 > Default: `new` unless directed-EOI is supported
 
 ### iommu
-    = List of [ <bool>, verbose, debug, force, required, quarantine[=scratch-page],
+    = List of [ <bool>, verbose, debug, force, required,
+                quarantine=<bool>|scratch-page,
                 sharept, superpages, intremap, intpost, crash-disable,
                 snoop, qinval, igfx, amd-iommu-perdev-intremap,
                 dom0-{passthrough,strict} ]
@@ -1508,7 +1520,8 @@ boolean (e.g. `iommu=no`) can override this and leave the IOMMUs disabled.
     successfully.
 
 *   The `quarantine` option can be used to control Xen's behavior when
-    de-assigning devices from guests.
+    de-assigning devices from guests.  The default behaviour is chosen at
+    compile time, and is one of `CONFIG_IOMMU_QUARANTINE_{NONE,BASIC,SCRATCH_PAGE}`.
 
     When a PCI device is assigned to an untrusted domain, it is possible
     for that domain to program the device to DMA to an arbitrary address.
@@ -1520,15 +1533,14 @@ boolean (e.g. `iommu=no`) can override this and leave the IOMMUs disabled.
     should be enabled.  Quarantining can be done in two ways: In its basic
     form, all in-flight DMA will simply be forced to encounter IOMMU
     faults.  Since there are systems where doing so can cause host lockup,
-    an alternative form is available where writes to memory will be made
-    fault, but reads will be directed to a scratch page.  The implication
-    here is that such reads will go unnoticed, i.e. an admin may not
-    become aware of the underlying problem.
+    an alternative form is available where accesses to memory will be directed
+    to a scratch page. The implication here is that such accesses will go
+    unnoticed, i.e. an admin may not become aware of the underlying problem.
 
     Therefore, if this option is set to true (the default), Xen always
     quarantines such devices; they must be explicitly assigned back to Dom0
     before they can be used there again.  If set to "scratch-page", still
-    active DMA reads will additionally be directed to a "scratch" page.  If
+    active DMA operations will additionally be directed to a "scratch" page.  If
     set to false, Xen will only quarantine devices the toolstack has arranged
     for getting quarantined, and only in the "basic" form.
 

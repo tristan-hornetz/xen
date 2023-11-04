@@ -847,32 +847,62 @@ int __init early_microcode_init(unsigned long *module_map,
 {
     const struct cpuinfo_x86 *c = &boot_cpu_data;
     int rc = 0;
+    bool can_load = false;
 
     switch ( c->x86_vendor )
     {
     case X86_VENDOR_AMD:
         if ( c->x86 >= 0x10 )
+        {
             ucode_ops = amd_ucode_ops;
+            can_load = true;
+        }
         break;
 
     case X86_VENDOR_INTEL:
-        if ( c->x86 >= 6 )
-            ucode_ops = intel_ucode_ops;
+        ucode_ops = intel_ucode_ops;
+        can_load = intel_can_load_microcode();
         break;
     }
 
     if ( !ucode_ops.apply_microcode )
     {
-        printk(XENLOG_WARNING "Microcode loading not available\n");
+        printk(XENLOG_INFO "Microcode loading not available\n");
+        return -ENODEV;
+    }
+
+    ucode_ops.collect_cpu_info();
+
+    /*
+     * Some hypervisors deliberately report a microcode revision of -1 to
+     * mean that they will not accept microcode updates.
+     *
+     * It's also possible the hardware might have built-in support to disable
+     * updates and someone (e.g: a baremetal cloud provider) disabled them.
+     *
+     * Take the hint in either case and ignore the microcode interface.
+     */
+    if ( this_cpu(cpu_sig).rev == ~0 || !can_load )
+    {
+        printk(XENLOG_INFO "Microcode loading disabled due to: %s\n",
+               can_load ? "rev = ~0" : "HW toggle");
+        ucode_ops.apply_microcode = NULL;
         return -ENODEV;
     }
 
     microcode_grab_module(module_map, mbi);
 
-    ucode_ops.collect_cpu_info();
-
     if ( ucode_mod.mod_end || ucode_blob.size )
         rc = early_microcode_update_cpu();
+
+    /*
+     * Some CPUID leaves and MSRs are only present after microcode updates
+     * on some processors. We take the chance here to make sure what little
+     * state we have already probed is re-probed in order to ensure we do
+     * not use stale values. tsx_init() in particular needs to have up to
+     * date MSR_ARCH_CAPS.
+     */
+    early_cpu_init(false);
 
     return rc;
 }

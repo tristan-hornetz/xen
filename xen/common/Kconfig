@@ -23,6 +23,21 @@ config GRANT_TABLE
 
 	  If unsure, say Y.
 
+config PDX_COMPRESSION
+	bool "PDX (Page inDeX) compression" if EXPERT && !X86 && !RISCV
+	default ARM || PPC
+	help
+	  PDX compression is a technique designed to reduce the memory
+	  overhead of physical memory management on platforms with sparse RAM
+	  banks.
+
+	  If your platform does have sparse RAM banks, enabling PDX
+	  compression may reduce the memory overhead of Xen, but does carry a
+	  runtime performance cost.
+
+	  If your platform does not have sparse RAM banks, do not enable PDX
+	  compression.
+
 config ALTERNATIVE_CALL
 	bool
 
@@ -41,6 +56,9 @@ config HAS_COMPAT
 config HAS_DEVICE_TREE
 	bool
 
+config HAS_DIT # Data Independent Timing
+	bool
+
 config HAS_EX_TABLE
 	bool
 
@@ -51,9 +69,6 @@ config HAS_IOPORTS
 	bool
 
 config HAS_KEXEC
-	bool
-
-config HAS_PDX
 	bool
 
 config HAS_PMAP
@@ -174,6 +189,21 @@ config SPECULATIVE_HARDEN_GUEST_ACCESS
 	  If unsure, say Y.
 
 endmenu
+
+config DIT_DEFAULT
+	bool "Data Independent Timing default"
+	depends on HAS_DIT
+	help
+	  Hardware often surfaces instructions the timing of which is dependent
+	  on the data they process.  Some of these instructions may be used in
+	  timing sensitive environments, e.g. cryptography.  When such
+	  instructions exist, hardware may further surface a control allowing
+	  to make the behavior of such instructions independent of the data
+	  they act upon.  Note the build time value can be overridden at runtime
+	  using the "dit" command line option.
+
+	  NB: Intel calls the feature DOITM (Data Operand Independent Timing
+	      Mode).
 
 config HYPFS
 	bool "Hypervisor file system support"

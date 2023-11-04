@@ -30,11 +30,11 @@ done
 echo \"${passed}\"
 "
     dom0_check="
+set +x
 until grep -q \"${passed}\" /var/log/xen/console/guest-domU.log; do
     sleep 1
 done
-# get domU console content into test log
-tail -n 100 /var/log/xen/console/guest-domU.log
+set -x
 echo \"${passed}\"
 "
 if [ "${test_variant}" = "dom0pvh" ]; then
@@ -54,13 +54,12 @@ until grep 'domU started' /var/log/xen/console/guest-domU.log; do
     sleep 1
 done
 echo \"${wait_and_wakeup}\"
+# let the above message flow to console, then suspend
+sync /dev/stdout
+sleep 5
 set -x
 echo deep > /sys/power/mem_sleep
 echo mem > /sys/power/state
-# now wait for resume
-sleep 5
-# get domU console content into test log
-tail -n 100 /var/log/xen/console/guest-domU.log
 xl list
 xl dmesg | grep 'Finishing wakeup from ACPI S3 state' || exit 1
 # check if domU is still alive
@@ -94,23 +93,18 @@ on_reboot = "destroy"
 
     domU_check="
 set -x -e
-ip link set eth0 up
-timeout 30s udhcpc -i eth0
+interface=eth0
+ip link set \"\$interface\" up
+timeout 30s udhcpc -i \"\$interface\"
 pingip=\$(ip -o -4 r show default|cut -f 3 -d ' ')
 ping -c 10 \"\$pingip\"
 echo domU started
-cat /proc/interrupts
+pcidevice=\$(basename \$(readlink /sys/class/net/\$interface/device))
+lspci -vs \$pcidevice
 "
-    if [ "$PCIDEV_INTR" = "MSI-X" ]; then
+    if [ -n "$PCIDEV_INTR" ]; then
         domU_check="$domU_check
-grep -- '\\(-msi-x\\|PCI-MSI-X\\).*eth0' /proc/interrupts
-"
-    elif [ "$PCIDEV_INTR" = "MSI" ]; then
-        # depending on the kernel version and domain type, the MSI can be
-        # marked as '-msi', 'PCI-MSI', or 'PCI-MSI-<SBDF>'; be careful to not match
-        # -msi-x nor PCI-MSI-X
-        domU_check="$domU_check
-grep -- '\\(-msi \\|PCI-MSI\\( \\|-[^X]\\)\\).*eth0' /proc/interrupts
+lspci -vs \$pcidevice | fgrep '$PCIDEV_INTR: Enable+'
 "
     fi
     domU_check="$domU_check
@@ -118,10 +112,10 @@ echo \"${passed}\"
 "
 
     dom0_check="
+tail -F /var/log/xen/qemu-dm-domU.log &
 until grep -q \"^domU Welcome to Alpine Linux\" /var/log/xen/console/guest-domU.log; do
     sleep 1
 done
-tail -n 100 /var/log/xen/console/guest-domU.log
 "
 fi
 
@@ -169,6 +163,8 @@ ifconfig eth0 up
 ifconfig xenbr0 up
 ifconfig xenbr0 192.168.0.1
 
+# get domU console content into test log
+tail -F /var/log/xen/console/guest-domU.log 2>/dev/null | sed -e \"s/^/(domU) /\" &
 xl create /etc/xen/domU.cfg
 ${dom0_check}
 " > etc/local.d/xen.start
@@ -225,10 +221,12 @@ if [ -n "$wait_and_wakeup" ]; then
     ssh $CONTROLLER wake
 fi
 
+set +x
 until grep "^Welcome to Alpine Linux" smoke.serial || [ $timeout -le 0 ]; do
     sleep 1;
     : $((--timeout))
 done
+set -x
 
 tail -n 100 smoke.serial
 

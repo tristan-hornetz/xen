@@ -49,6 +49,13 @@ maintainers if you want to suggest a change.
      - All source files shall compile without any compilation errors
      -
 
+   * - `Dir 4.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/D_04_01.c>`_
+     - Required
+     - Run-time failures shall be minimized
+     - The strategies adopted by Xen to prevent certain classes of runtime
+       failures is documented by
+       `C-runtime-failures.rst <docs/misra/C-runtime-failures.rst>`_
+
    * - `Dir 4.7 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/D_04_07.c>`_
      - Required
      - If a function returns error information then that error
@@ -334,6 +341,9 @@ maintainers if you want to suggest a change.
            compilers' extensions)
          - Implicit conversions to boolean for conditionals (?: if while
            for) and logical operators (! || &&)
+         - The essential type model allows the constants defined by anonymous
+           enums (e.g., enum { A, B, C }) to be used as operands to arithmetic
+           operators, as they have a signed essential type.
 
    * - `Rule 10.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_10_02.c>`_
      - Required

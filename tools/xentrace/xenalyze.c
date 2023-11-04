@@ -1625,7 +1625,7 @@ struct vlapic_struct {
 struct vcpu_data {
     int vid;
     struct domain_data *d; /* up-pointer */
-    unsigned activated:1;
+    unsigned activated:1, delayed_init:1;
 
     int guest_paging_levels;
 
@@ -2866,7 +2866,7 @@ void dump_eip(struct eip_list_struct *head) {
 
     for(p=head; p; p=p->next)
     {
-        total += p->summary.count;
+        total += p->summary.event_count;
         N++;
     }
 
@@ -2901,8 +2901,8 @@ void dump_eip(struct eip_list_struct *head) {
                           p->eip,
                           find_symbol(p->eip));
             printf(" %7d %5.2lf%%\n",
-                   p->summary.count,
-                   ((double)p->summary.count*100)/total);
+                   p->summary.event_count,
+                   ((double)p->summary.event_count*100)/total);
         }
 
 
@@ -4628,6 +4628,14 @@ void hvm_generic_postprocess(struct hvm_data *h)
         /* Some exits we don't expect a handler; just return */
         if(opt.svm_mode)
         {
+            switch(h->exit_reason)
+            {
+            case VMEXIT_VINTR: /* Equivalent of PENDING_VIRT_INTR */
+            case VMEXIT_PAUSE:
+                return;
+            default:
+                break;
+            }
         }
         else
         {
@@ -4636,6 +4644,7 @@ void hvm_generic_postprocess(struct hvm_data *h)
                 /* These just need us to go through the return path */
             case EXIT_REASON_PENDING_VIRT_INTR:
             case EXIT_REASON_TPR_BELOW_THRESHOLD:
+            case EXIT_REASON_PAUSE_INSTRUCTION:
                 /* Not much to log now; may need later */
             case EXIT_REASON_WBINVD:
                 return;
@@ -4652,6 +4661,19 @@ void hvm_generic_postprocess(struct hvm_data *h)
                       ? "[clipped]"
                       : h->exit_reason_name[h->exit_reason]);
             warned[h->exit_reason]=1;
+
+            /* 
+             * NB that we don't return here; the result will be that `evt`
+             * will be "0", and there will be a "(no handler)" entry for the
+             * given VMEXIT.
+             * 
+             * This does mean that if two different exits have no HVM
+             * handlers, that only the first one will accumulate data;
+             * if accumulating a separate "(no handler)" data for more
+             * than one exit reason is needed, we'll have to make Yet
+             * Another Array.  But for now, since we try to avoid
+             * it happening, just tolerate it.
+             */ 
         }
     }
 
@@ -4664,18 +4686,19 @@ void hvm_generic_postprocess(struct hvm_data *h)
     }
 
     if(opt.summary_info) {
-        update_cycles(&h->summary.generic[evt],
-                       h->arc_cycles);
-
         /* NB that h->exit_reason may be 0, so we offset by 1 */
         if ( registered[evt] )
         {
             static unsigned warned[HVM_EXIT_REASON_MAX] = { 0 };
-            if ( registered[evt] != h->exit_reason+1 && !warned[h->exit_reason])
+            if ( registered[evt] != h->exit_reason+1 )
             {
-                fprintf(warn, "%s: HVM evt %lx in %x and %x!\n",
-                        __func__, evt, registered[evt]-1, h->exit_reason);
-                warned[h->exit_reason]=1;
+                if ( !warned[h->exit_reason] )
+                {
+                    fprintf(warn, "%s: HVM evt %lx in %x and %x!\n",
+                            __func__, evt, registered[evt]-1, h->exit_reason);
+                    warned[h->exit_reason]=1;
+                }
+                return;
             }
         }
         else
@@ -4686,7 +4709,11 @@ void hvm_generic_postprocess(struct hvm_data *h)
                         __func__, ret);
             registered[evt]=h->exit_reason+1;
         }
-        /* HLT checked at hvm_vmexit_close() */
+
+        update_cycles(&h->summary.generic[evt],
+                       h->arc_cycles);
+
+       /* HLT checked at hvm_vmexit_close() */
     }
 }
 
@@ -6952,10 +6979,17 @@ void vcpu_start(struct pcpu_info *p, struct vcpu_data *v,
      * bring a vcpu out of INIT until it's seen to be actually
      * running somewhere. */
     if ( new_runstate != RUNSTATE_RUNNING ) {
-        fprintf(warn, "First schedule for d%dv%d doesn't take us into a running state; leaving INIT\n",
-                v->d->did, v->vid);
+        if ( !v->delayed_init ) {
+            fprintf(warn, "First schedule for d%dv%d doesn't take us into a running state; leaving in INIT\n",
+                    v->d->did, v->vid);
+            v->delayed_init = 1;
+        }
 
         return;
+    } else if ( v->delayed_init ) {
+        fprintf(warn, "d%dv%d RUNSTATE_RUNNING detected, leaving INIT",
+                v->d->did, v->vid);
+        v->delayed_init = 0;
     }
 
     tsc = ri_tsc;
