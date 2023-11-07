@@ -15,6 +15,8 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     int ret = 0;
     unsigned int i;
     struct p2m_domain *p2m;
+    p2m_type_t ptype;
+    p2m_access_t atype = 0;
     gfn_t c_gfn;
 
     //gdprintk(XENLOG_WARNING, "Entered set_xom_seal, secondary controls are 0x%x, ept used is %d\n", vmx_secondary_exec_control, (vmx_secondary_exec_control & SECONDARY_EXEC_ENABLE_EPT) > 0);
@@ -35,6 +37,8 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     for ( i = 0; i < nr_pages; i++) {
         c_gfn = _gfn(gfn.gfn + (XOM_PAGE_SIZE * i));
         gfn_lock(p2m, c_gfn, 0);
+        p2m->get_entry(p2m, c_gfn, &ptype, &atype, 0, NULL, NULL);
+        gdprintk(XENLOG_WARNING, "Original permissions: 0x%x\n", (unsigned int) atype);
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
         if (ret < 0)
@@ -75,37 +79,39 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     for ( i = 0; i < nr_pages; i++) {
         c_gfn = _gfn(gfn.gfn + (XOM_PAGE_SIZE * i));
 
+        gfn_lock(p2m, c_gfn, 0);
+        // Check whether the provided gfn is actually an XOM page
+        p2m->get_entry(p2m, c_gfn, &ptype, &atype, 0, NULL, NULL);
+        if (atype != p2m_access_x){
+            gfn_unlock(p2m, c_gfn, 0);
+            continue;
+        }
+
         // Map the page into our address space
         page = get_page_from_gfn(d, c_gfn.gfn, NULL, P2M_ALLOC);
 
         if (!page) {
             ret = -EINVAL;
+            gfn_unlock(p2m, c_gfn, 0);
             goto exit;
         }
 
         if (!get_page_type(page, PGT_writable_page)) {
             put_page(page);
+            gfn_unlock(p2m, c_gfn, 0);
             ret = -EPERM;
             goto exit;
-        }
-
-        // Check whether the provided gfn is actually an XOM page
-        p2m->get_entry(p2m, c_gfn, &ptype, &atype, 0, NULL, NULL);
-        if (atype != p2m_access_x) {
-            put_page(page);
-            continue;
         }
 
         // Overwrite XOM page with 0x90
         xom_page = __map_domain_page(page);
         memset(xom_page, 0x90, PAGE_SIZE);
         unmap_domain_page(xom_page);
+        put_page(page);
 
         // Set SLAT permissions to RWX
-        gfn_lock(p2m, c_gfn, 0);
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_rwx, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
-        put_page(page);
     }
 
 exit:
