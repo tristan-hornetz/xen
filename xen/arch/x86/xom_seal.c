@@ -17,8 +17,6 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     int ret = 0;
     unsigned int i;
     struct p2m_domain *p2m;
-    p2m_type_t ptype;
-    p2m_access_t atype = 0;
     gfn_t c_gfn;
 
     p2m = p2m_get_hostp2m(d);
@@ -37,7 +35,6 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     for ( i = 0; i < nr_pages; i++) {
         c_gfn = _gfn(gfn.gfn + (XOM_PAGE_SIZE * i));
         gfn_lock(p2m, c_gfn, 0);
-        p2m->get_entry(p2m, c_gfn, &ptype, &atype, 0, NULL, NULL);
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
         if (ret < 0)
@@ -45,8 +42,6 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     }
 
     p2m->tlb_flush(p2m);
-    //gdprintk(XENLOG_WARNING, "Returning from set_xom_seal with ret == %d\n", ret);
-
     return ret;
 }
 
@@ -59,8 +54,6 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     p2m_type_t ptype;
     p2m_access_t atype;
     gfn_t c_gfn;
-
-    //gdprintk(XENLOG_WARNING, "Entered clear_xom_seal\n");
 
     p2m = p2m_get_hostp2m(d);
 
@@ -106,7 +99,7 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
         xom_page = __map_domain_page(page);
         memset(xom_page, 0x90, PAGE_SIZE);
         unmap_domain_page(xom_page);
-        put_page(page);
+        put_page_and_type(page);
 
         // Set SLAT permissions to RWX
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_rwx, c_gfn);
@@ -115,7 +108,6 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
 
 exit:
     p2m->tlb_flush(p2m);
-    //gdprintk(XENLOG_WARNING, "Exit clear_xom_seal with ret == %d\n", ret);
     return ret;
 }
 
