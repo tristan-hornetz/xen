@@ -11,6 +11,8 @@
 
 #define XOM_PAGE_SIZE 0x1000
 
+// TODO: Integrate sub-page write permission system, Intel SDM, Vol. 3, Section 29.3.4
+
 static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     int ret = 0;
     unsigned int i;
@@ -18,8 +20,6 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     p2m_type_t ptype;
     p2m_access_t atype = 0;
     gfn_t c_gfn;
-
-    //gdprintk(XENLOG_WARNING, "Entered set_xom_seal, secondary controls are 0x%x, ept used is %d\n", vmx_secondary_exec_control, (vmx_secondary_exec_control & SECONDARY_EXEC_ENABLE_EPT) > 0);
 
     p2m = p2m_get_hostp2m(d);
 
@@ -38,7 +38,6 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
         c_gfn = _gfn(gfn.gfn + (XOM_PAGE_SIZE * i));
         gfn_lock(p2m, c_gfn, 0);
         p2m->get_entry(p2m, c_gfn, &ptype, &atype, 0, NULL, NULL);
-        gdprintk(XENLOG_WARNING, "Original permissions: 0x%x\n", (unsigned int) atype);
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
         if (ret < 0)

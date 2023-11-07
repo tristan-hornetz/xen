@@ -808,9 +808,6 @@ ept_set_entry(struct p2m_domain *p2m, gfn_t gfn_, mfn_t mfn,
     struct ept_data *ept = &p2m->ept;
     struct domain *d = p2m->domain;
 
-    if( p2ma == p2m_access_x )
-        gdprintk(XENLOG_WARNING, "Entered p2m-ept, ept_set_entry with p2m_access_x\n");
-
     ASSERT(ept);
 
     /*
@@ -822,7 +819,7 @@ ept_set_entry(struct p2m_domain *p2m, gfn_t gfn_, mfn_t mfn,
     if ( (fn_mask & ((1UL << order) - 1)) ||
          ((u64)gfn >> ((ept->wl + 1) * EPT_TABLE_ORDER)) ||
          (order % EPT_TABLE_ORDER) )
-        return -EADDRNOTAVAIL;
+        return -EINVAL;
 
     /* Carry out any eventually pending earlier changes first. */
     ret = resolve_misconfig(p2m, gfn);
@@ -939,17 +936,13 @@ ept_set_entry(struct p2m_domain *p2m, gfn_t gfn_, mfn_t mfn,
             need_modify_vtd_table = 0;
 
         ept_p2m_type_to_flags(p2m, &new_entry);
-    } else
-        gdprintk(XENLOG_WARNING, "Invalid mfn\n");
+    }
 
     if ( sve != -1 )
         new_entry.suppress_ve = !!sve;
     else
         new_entry.suppress_ve = is_epte_valid(&old_entry) ?
                                     old_entry.suppress_ve : 1;
-
-    if(p2ma == p2m_access_x)
-        gdprintk(XENLOG_WARNING, "Old entry: 0x%lx (X: %u, SP: %u) - New entry: 0x%lx (X: %u, SP: %u)\n", ept_entry->epte, ept_entry->x, ept_entry->sp, new_entry.epte, new_entry.x, new_entry.sp);
 
     rc = atomic_write_ept_entry(p2m, ept_entry, new_entry, target);
     if ( unlikely(rc) )
@@ -998,8 +991,7 @@ out:
         if ( !rc )
             rc = ret;
     }
-    if(p2ma == p2m_access_x)
-        gdprintk(XENLOG_WARNING, "EPTE Exit state: 0x%lx, X is %u, SP is %u\n", ept_entry->epte, ept_entry->x, ept_entry->sp);
+
     return rc;
 }
 
