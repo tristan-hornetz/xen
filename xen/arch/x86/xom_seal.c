@@ -29,11 +29,11 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     if (!nr_pages)
         return -EINVAL;
 
-    if ( gfn.gfn + (XOM_PAGE_SIZE * nr_pages) > p2m->max_mapped_pfn )
+    if ( gfn.gfn + nr_pages > p2m->max_mapped_pfn )
         return -EOVERFLOW;
 
     for ( i = 0; i < nr_pages; i++) {
-        c_gfn = _gfn(gfn.gfn + (XOM_PAGE_SIZE * i));
+        c_gfn = _gfn(gfn.gfn + i);
         gfn_lock(p2m, c_gfn, 0);
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
@@ -65,11 +65,11 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     if (!nr_pages)
         return -EINVAL;
 
-    if ( gfn.gfn + (XOM_PAGE_SIZE * nr_pages) > p2m->max_mapped_pfn )
+    if ( gfn.gfn + nr_pages > p2m->max_mapped_pfn )
         return -EOVERFLOW;
 
     for ( i = 0; i < nr_pages; i++) {
-        c_gfn = _gfn(gfn.gfn + (XOM_PAGE_SIZE * i));
+        c_gfn = _gfn(gfn.gfn + i);
 
         gfn_lock(p2m, c_gfn, 0);
         // Check whether the provided gfn is actually an XOM page
