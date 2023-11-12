@@ -150,9 +150,7 @@ exit:
 static int create_xom_subpages(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     int ret = 0;
     unsigned int i;
-    void* xom_page;
     struct p2m_domain *p2m;
-    struct page_info *page;
     xom_subpage* subpage_info = NULL;
     p2m_type_t ptype;
     p2m_access_t atype;
@@ -190,28 +188,6 @@ static int create_xom_subpages(struct domain* d, gfn_t gfn, unsigned int nr_page
             ret = -EINVAL;
             goto exit;
         }
-
-        // Map the page into our address space
-        page = get_page_from_gfn(d, c_gfn.gfn, NULL, P2M_ALLOC);
-
-        if (!page) {
-            ret = -EINVAL;
-            gfn_unlock(p2m, c_gfn, 0);
-            goto exit;
-        }
-
-        if (!get_page_type(page, PGT_writable_page)) {
-            put_page(page);
-            gfn_unlock(p2m, c_gfn, 0);
-            ret = -EPERM;
-            goto exit;
-        }
-
-        // Overwrite XOM page with 0x90
-        xom_page = __map_domain_page(page);
-        memset(xom_page, 0x90, PAGE_SIZE);
-        unmap_domain_page(xom_page);
-        put_page_and_type(page);
 
         // Set SLAT permissions to X
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, c_gfn);
