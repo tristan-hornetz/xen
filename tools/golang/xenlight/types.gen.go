@@ -488,6 +488,7 @@ type TeeType int
 const(
 TeeTypeNone TeeType = 0
 TeeTypeOptee TeeType = 1
+TeeTypeFfa TeeType = 2
 )
 
 type SveType int
@@ -576,6 +577,8 @@ DeviceTree string
 Acpi Defbool
 Bootloader string
 BootloaderArgs StringList
+BootloaderRestrict Defbool
+BootloaderUser string
 TimerMode TimerMode
 NestedHvm Defbool
 Apic Defbool
