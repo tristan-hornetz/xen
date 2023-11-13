@@ -193,7 +193,7 @@ static int create_xom_subpages(struct domain* d, gfn_t gfn, unsigned int nr_page
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
 
-        subpage_info->gfn = gfn;
+        subpage_info->gfn = c_gfn;
         list_add(&subpage_info->lhead, &d->xom_subpages);
         subpage_info = NULL;
     }
