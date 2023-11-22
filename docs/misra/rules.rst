@@ -383,6 +383,36 @@ maintainers if you want to suggest a change.
 
        CFLAGS="-Warith-conversion -Wno-error=arith-conversion" make -C xen
 
+   * - `Rule 11.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_11_01.c>`_
+     - Required
+     - Conversions shall not be performed between a pointer to a
+       function and any other type
+     - All conversions to integer types are permitted if the destination
+       type has enough bits to hold the entire value. Conversions to
+       bool and void* are permitted.
+
+   * - `Rule 11.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_11_02.c>`_
+     - Required
+     - Conversions shall not be performed between a pointer to an
+       incomplete type and any other type
+     - All conversions to integer types are permitted if the destination
+       type has enough bits to hold the entire value. Conversions to
+       bool and void* are permitted.
+
+   * - `Rule 11.3 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_11_03.c>`_
+     - Required
+     - A cast shall not be performed between a pointer to object type
+       and a pointer to a different object type
+     -
+
+   * - `Rule 11.6 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_11_06.c>`_
+     - Required
+     - A cast shall not be performed between pointer to void and an
+       arithmetic type
+     - All conversions to integer types are permitted if the destination
+       type has enough bits to hold the entire value. Conversions to
+       bool are permitted.
+
    * - `Rule 11.7 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_11_07.c>`_
      - Required
      - A cast shall not be performed between pointer to object and a noninteger arithmetic type
@@ -488,6 +518,28 @@ maintainers if you want to suggest a change.
        in the same file as the #if #ifdef or #ifndef directive to which
        they are related
      -
+
+   * - `Rule 21.1 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_21_01.c>`_
+     - Required
+     - #define and #undef shall not be used on a reserved identifier or
+       reserved macro name
+     - Identifiers starting with an underscore followed by another underscore
+       or an upper-case letter are reserved. Today Xen uses many, such as
+       header guards and bitwise manipulation functions. Upon analysis it turns
+       out Xen identifiers do not clash with the identifiers used by modern
+       GCC, but that is not a guarantee that there won't be a naming clash in
+       the future or with another compiler.  For these reasons we discourage
+       the introduction of new reserved identifiers in Xen, and we see it as
+       positive the reduction of reserved identifiers. At the same time,
+       certain identifiers starting with wo underscores are also commonly used
+       in Linux (e.g. __set_bit) and we don't think it would be an improvement
+       to rename them.
+
+   * - `Rule 21.2 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_21_02.c>`_
+     - Required
+     - A reserved identifier or reserved macro name shall not be
+       declared
+     - See comment for Rule 21.1
 
    * - `Rule 21.13 <https://gitlab.com/MISRA/MISRA-C/MISRA-C-2012/Example-Suite/-/blob/master/R_21_13.c>`_
      - Mandatory

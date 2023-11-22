@@ -90,6 +90,12 @@ Deviations related to MISRA C:2012 Rules:
          - __emulate_2op and __emulate_2op_nobyte
          - read_debugreg and write_debugreg
 
+   * - R7.1
+     - It is safe to use certain octal constants the way they are defined
+       in specifications, manuals, and algorithm descriptions. Such places
+       are marked safe with a /\* octal-ok \*/ in-code comment.
+     - Tagged as `safe` for ECLAIR.
+
    * - R7.2
      - Violations caused by __HYPERVISOR_VIRT_START are related to the
        particular use of it done in xen_mk_ulong.
@@ -147,6 +153,18 @@ Deviations related to MISRA C:2012 Rules:
        definition is compiled-out or optimized-out by the compiler).
      - Tagged as `deliberate` in ECLAIR.
 
+   * - R8.6
+     - The search procedure for Unix linkers is well defined, see ld(1) manual:
+       "The linker will search an archive only once, at the location where it
+       is specified on the command line. If the archive defines a symbol which
+       was undefined in some object which appeared before the archive on the
+       command line, the linker will include the appropriate file(s) from the
+       archive".
+       In Xen, thanks to the order in which file names appear in the build
+       commands, if arch-specific definitions are present, they get always
+       linked in before searching in the lib.a archive resulting from xen/lib.
+     - Tagged as `deliberate` for ECLAIR.
+
    * - R8.10
      - The gnu_inline attribute without static is deliberately allowed.
      - Tagged as `deliberate` for ECLAIR.
@@ -191,6 +209,20 @@ Deviations related to MISRA C:2012 Rules:
        project, it is deemed safe to use bitwise shift operators.
        See automation/eclair_analysis/deviations.ecl for the full explanation.
      - Tagged as `safe` for ECLAIR.
+
+   * - R10.1
+     - The macro ISOLATE_LSB encapsulates the well-known pattern (x & -x)
+       applied to unsigned integer values on 2's complement architectures
+       (i.e., all architectures supported by Xen), used to obtain a mask where
+       just the least significant nonzero bit of x is set.
+       If no bits are set, 0 is returned.
+     - Tagged as `safe` for ECLAIR.
+
+   * - R11.9
+     - __ACCESS_ONCE uses an integer, which happens to be zero, as a
+       compile time check. The typecheck uses a cast. The usage of zero or other
+       integers for this purpose is allowed.
+     - Tagged as `deliberate` for ECLAIR.
 
    * - R13.5
      - All developers and reviewers can be safely assumed to be well aware of
