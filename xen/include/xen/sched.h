@@ -601,6 +601,9 @@ struct domain
         struct ioreq_server     *server[MAX_NR_IOREQ_SERVERS];
     } ioreq_server;
 #endif
+#ifdef CONFIG_HVM
+    struct list_head xom_subpages;
+#endif
 
     /* Holding CDF_* constant. Internal flags for domain creation. */
     unsigned int cdf;

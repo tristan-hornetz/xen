@@ -33,6 +33,7 @@
 #include <xen/xenoprof.h>
 #include <xen/irq.h>
 #include <xen/argo.h>
+#include <xen/xom_seal.h>
 #include <asm/p2m.h>
 #include <asm/processor.h>
 #include <public/sched.h>
@@ -636,6 +637,9 @@ struct domain *domain_create(domid_t domid,
 #ifdef CONFIG_STATIC_MEMORY
     INIT_PAGE_LIST_HEAD(&d->resv_page_list);
 #endif
+#ifdef CONFIG_HVM
+    INIT_LIST_HEAD(&d->xom_subpages);
+#endif
 
 
     spin_lock_init(&d->node_affinity_lock);
@@ -1172,6 +1176,9 @@ static void cf_check complete_domain_destroy(struct rcu_head *head)
     xfree(d->vm_event_monitor);
 #ifdef CONFIG_MEM_SHARING
     xfree(d->vm_event_share);
+#endif
+#if CONFIG_HVM
+    free_xen_subpages(&d->xom_subpages);
 #endif
 
     for ( i = d->max_vcpus - 1; i >= 0; i-- )

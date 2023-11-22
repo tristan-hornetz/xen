@@ -412,6 +412,10 @@ static int vmx_init_vmcs_config(bool bsp)
         _vmx_secondary_exec_control &= ~ SECONDARY_EXEC_PAUSE_LOOP_EXITING;
     }
 
+    // Disable mode based execution control
+    if ( cpu_has_vmx_mode_based_control )
+        _vmx_secondary_exec_control &= ~(SECONDARY_EXEC_MODE_BASED_CONTROL);
+
     min = VM_EXIT_ACK_INTR_ON_EXIT;
     opt = (VM_EXIT_SAVE_GUEST_PAT | VM_EXIT_LOAD_HOST_PAT |
            VM_EXIT_LOAD_HOST_EFER | VM_EXIT_CLEAR_BNDCFGS);

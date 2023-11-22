@@ -3788,6 +3788,7 @@ static void ept_handle_violation(ept_qual_t q, paddr_t gpa)
         gla = ~0ull;
 
     ret = hvm_hap_nested_page_fault(gpa, gla, npfec);
+
     switch ( ret )
     {
     case 0:         // Unhandled L1 EPT violation

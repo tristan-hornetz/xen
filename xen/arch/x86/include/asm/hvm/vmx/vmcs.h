@@ -255,6 +255,7 @@ extern u32 vmx_vmentry_control;
 #define SECONDARY_EXEC_ENABLE_PML               0x00020000U
 #define SECONDARY_EXEC_ENABLE_VIRT_EXCEPTIONS   0x00040000U
 #define SECONDARY_EXEC_XSAVES                   0x00100000U
+#define SECONDARY_EXEC_MODE_BASED_CONTROL       0x00400000U
 #define SECONDARY_EXEC_TSC_SCALING              0x02000000U
 #define SECONDARY_EXEC_BUS_LOCK_DETECTION       0x40000000U
 #define SECONDARY_EXEC_NOTIFY_VM_EXITING        0x80000000U
@@ -339,6 +340,8 @@ extern u64 vmx_ept_vpid_cap;
      (vmx_vmentry_control & VM_ENTRY_LOAD_BNDCFGS))
 #define cpu_has_vmx_xsaves \
     (vmx_secondary_exec_control & SECONDARY_EXEC_XSAVES)
+#define cpu_has_vmx_mode_based_control \
+    (vmx_secondary_exec_control & SECONDARY_EXEC_MODE_BASED_CONTROL)
 #define cpu_has_vmx_tsc_scaling \
     (vmx_secondary_exec_control & SECONDARY_EXEC_TSC_SCALING)
 #define cpu_has_vmx_bus_lock_detection \

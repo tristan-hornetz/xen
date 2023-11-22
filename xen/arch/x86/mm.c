@@ -110,6 +110,7 @@
 #include <xen/efi.h>
 #include <xen/hypercall.h>
 #include <xen/mm.h>
+#include <xen/xom_seal.h>
 #include <asm/paging.h>
 #include <asm/shadow.h>
 #include <asm/page.h>
@@ -3469,8 +3470,9 @@ long do_mmuext_op(
 
     if ( !is_pv_domain(pg_owner) )
     {
+        rc = handle_xom_seal(curr, uops, count, pdone);
         put_pg_owner(pg_owner);
-        return -EINVAL;
+        return rc;
     }
 
     rc = xsm_mmuext_op(XSM_TARGET, currd, pg_owner);
