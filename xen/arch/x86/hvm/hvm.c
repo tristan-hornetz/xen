@@ -1771,6 +1771,7 @@ int hvm_hap_nested_page_fault(paddr_t gpa, unsigned long gla,
     vm_event_request_t *req_ptr = NULL;
     bool sync = false;
     unsigned int page_order;
+    uint64_t d0, d1;
 
     /* On Nested Virtualization, walk the guest page table.
      * If this succeeds, all is fine.
@@ -1914,7 +1915,11 @@ int hvm_hap_nested_page_fault(paddr_t gpa, unsigned long gla,
             // Handle XOM exception -> Cause GP fault
             if ( p2ma == p2m_access_x )
             {
-                gprintk(XENLOG_ERR, "Handle XOM access violation on gfn 0x%lx\n", gfn);
+                asm volatile ("movq %%xmm0, %0\n"
+                              "movhlps %%xmm0, %%xmm0\n"
+                              "movq %%xmm0, %1"
+                              : "=r"(d0), "=r"(d1));
+                gprintk(XENLOG_ERR, "Handle XOM access violation on gfn 0x%lx. XMM0: (0x%lx, 0x%lx)\n", gfn, d0, d1);
                 hvm_inject_hw_exception(X86_EXC_GP, 0);
                 rc = 1;
                 goto out_put_gfn;
