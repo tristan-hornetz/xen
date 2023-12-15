@@ -8,6 +8,7 @@
 #include <public/xen.h>
 #include <asm/p2m.h>
 #include <asm/event.h>
+#include <asm/hvm/vmx/vmx.h>
 #include <asm/hvm/vmx/vmcs.h>
 #include "mm/mm-locks.h"
 
@@ -275,6 +276,58 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     return 0;
 }
 
+static inline unsigned long vmr(unsigned long field) {
+    unsigned long val;
+
+    return vmread_safe(field, &val) ? 0 : val;
+}
+
+// Locate VMCS, and copy into guest buffer
+static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
+    int rc = -EFAULT;
+    void* dest_buffer, *vmcs;
+    struct page_info *page, *vmcs_page;
+    struct p2m_domain *p2m;
+
+    if ( !cpu_has_vmx )
+        return -EINVAL;
+
+    p2m = p2m_get_hostp2m(d);
+    vmcs_page = maddr_to_page(current->arch.hvm.vmx.vmcs_pa);
+
+    vmcs = __map_domain_page(vmcs_page);
+    if(!vmcs)
+        return -EINVAL;
+
+    gfn_lock(p2m, gfn_dest, 0);
+    page = get_page_from_gfn(d, gfn_dest.gfn, NULL, P2M_ALLOC);
+
+    if (!page) {
+        rc = -EINVAL;
+        gfn_unlock(p2m, gfn_dest, 0);
+        goto exit;
+    }
+
+    if (!get_page_type(page, PGT_writable_page)) {
+        put_page(page);
+        gfn_unlock(p2m, gfn_dest, 0);
+        rc = -EPERM;
+        goto exit;
+    }
+
+    // Copy VMCS into guest buffer
+    dest_buffer = __map_domain_page(page);
+    memcpy(dest_buffer, vmcs, PAGE_SIZE);
+    unmap_domain_page(dest_buffer);
+    put_page_and_type(page);
+    gfn_unlock(p2m, gfn_dest, 0);
+    
+    rc = 0;
+    exit:
+    unmap_domain_page(vmcs);
+    return rc;
+}
+
 int handle_xom_seal(struct vcpu* curr,
         XEN_GUEST_HANDLE_PARAM(mmuext_op_t) uops, unsigned int count, XEN_GUEST_HANDLE_PARAM(uint) pdone) {
     int rc;
@@ -308,6 +361,9 @@ int handle_xom_seal(struct vcpu* curr,
                 break;
             case MMUEXT_WRITE_XOM_SPAGES:
                 rc = write_into_subpage(d, _gfn(op.arg1.mfn), _gfn(op.arg2.src_mfn));
+                break;
+            case MMUEXT_DUMP_VMCS:
+                rc = dump_vmcs(d, _gfn(op.arg1.mfn));
                 break;
             default:
                 rc = -EOPNOTSUPP;
