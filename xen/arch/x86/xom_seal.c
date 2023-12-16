@@ -323,6 +323,9 @@ static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
     gdprintk(XENLOG_WARNING, "VMCS Dump: Mapped GFN 0x%lx to 0x%lx\n",
          gfn_dest.gfn, (unsigned long) dest_buffer);
 
+    gdprintk(XENLOG_WARNING, "VMCS Dump: Mapped GFN 0x%lx to 0x%lx. VMCS[0]: 0x%lx, dest[0]: 0x%lx\n",
+         gfn_dest.gfn, (unsigned long) dest_buffer, *(unsigned long*)vmcs, *(unsigned long*)dest_buffer);
+
     memcpy(dest_buffer, vmcs, PAGE_SIZE);
     unmap_domain_page(dest_buffer);
     put_page_and_type(page);
