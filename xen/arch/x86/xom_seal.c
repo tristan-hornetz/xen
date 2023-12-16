@@ -99,7 +99,7 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     if ( gfn.gfn + nr_pages > p2m->max_mapped_pfn )
         return -EOVERFLOW;
 
-    for ( i = 0; i < nr_pages; i++) {
+    for ( i = 0; i < nr_pages; i++ ) {
         c_gfn = _gfn(gfn.gfn + i);
 
         gfn_lock(p2m, c_gfn, 0);
@@ -284,18 +284,17 @@ static inline unsigned long vmr(unsigned long field) {
 
 // Locate VMCS, and copy into guest buffer
 static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
-    int rc = -EFAULT;
+    int rc;
     void* dest_buffer, *vmcs;
-    struct page_info *page, *vmcs_page;
+    struct page_info *page;
     struct p2m_domain *p2m;
 
     if ( !cpu_has_vmx )
         return -EINVAL;
 
     p2m = p2m_get_hostp2m(d);
-    vmcs_page = maddr_to_page(current->arch.hvm.vmx.vmcs_pa);
+    vmcs = map_domain_page(_mfn(PFN_DOWN(current->arch.hvm.vmx.vmcs_pa)));
 
-    vmcs = __map_domain_page(vmcs_page);
     if(!vmcs)
         return -EINVAL;
 
@@ -328,8 +327,8 @@ static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
     return rc;
 }
 
-int handle_xom_seal(struct vcpu* curr,
-        XEN_GUEST_HANDLE_PARAM(mmuext_op_t) uops, unsigned int count, XEN_GUEST_HANDLE_PARAM(uint) pdone) {
+int handle_xom_seal(const struct vcpu* curr,
+                    XEN_GUEST_HANDLE_PARAM(mmuext_op_t) uops, unsigned int count, XEN_GUEST_HANDLE_PARAM(uint) pdone) {
     int rc;
     unsigned int i;
     struct domain* d = curr->domain;
