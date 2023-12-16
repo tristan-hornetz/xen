@@ -295,6 +295,9 @@ static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
     p2m = p2m_get_hostp2m(d);
     vmcs = map_domain_page(_mfn(PFN_DOWN(current->arch.hvm.vmx.vmcs_pa)));
 
+    gdprintk(XENLOG_WARNING, "VMCS Dump: Found VMCS at physical address 0x%lx, mapped to 0x%lx\n",
+        current->arch.hvm.vmx.vmcs_pa, (unsigned long) vmcs);
+
     if(!vmcs)
         return -EINVAL;
 
@@ -316,6 +319,10 @@ static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
 
     // Copy VMCS into guest buffer
     dest_buffer = __map_domain_page(page);
+
+    gdprintk(XENLOG_WARNING, "VMCS Dump: Mapped GFN 0x%lx to 0x%lx\n",
+         gfn_dest.gfn, (unsigned long) dest_buffer);
+
     memcpy(dest_buffer, vmcs, PAGE_SIZE);
     unmap_domain_page(dest_buffer);
     put_page_and_type(page);
