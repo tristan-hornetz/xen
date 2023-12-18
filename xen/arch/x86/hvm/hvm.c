@@ -320,10 +320,6 @@ static bool pat_valid(uint64_t val)
     return !(any_gt_7 | any_2_or_3);
 }
 
-const void* get_reg_clear_magic(void){
-     return reg_clear_magic;
-}
-
 int hvm_set_guest_pat(struct vcpu *v, uint64_t guest_pat)
 {
     if ( !pat_valid(guest_pat) )
