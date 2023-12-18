@@ -26,6 +26,7 @@ extern bool_t opt_hvm_fep;
 #define opt_hvm_fep 0
 #endif
 
+extern const char reg_clear_magic[16];
 bool is_reg_clear_magic(void);
 void clear_sse_regs(void);
 void clear_avx_regs(void);

@@ -1,11 +1,20 @@
 .file "reg_clear.S"
 
-.extern get_reg_clear_magic
+.data
+.align 16
+.globl reg_clear_magic
+reg_clear_magic:
+.byte 0x43, 0x6c, 0x65, 0x61, 0x72, 0x4d, 0x65, 0x50, 0x6c, 0x65, 0x61, 0x73, 0x65, 0x21, 0x21, 0x00
 
+.text
+.extern get_reg_clear_magic
 .globl is_reg_clear_magic
 is_reg_clear_magic:
     // Prologue
-    sub $0x10, %rsp
+    push %rbp
+    mov %rsp, %rbp
+    sub $0x20, %rsp
+    and 0xfffffffffffffff0, %rsp    // Align rsp to 16 bytes
     movaps %xmm14, (%rsp)
 
     // Load clear-reg magic into xmm14
@@ -22,7 +31,8 @@ check_reg_clear_magic_exit:
 
     // Epilogue
     movaps (%rsp), %xmm14
-    add $0x10, %rsp
+
+    leave
     ret
 
 .globl clear_sse_regs
