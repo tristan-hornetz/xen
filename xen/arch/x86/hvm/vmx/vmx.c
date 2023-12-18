@@ -4788,7 +4788,7 @@ static void lbr_fixup(void)
 }
 
 /* Returns false if the vmentry has to be restarted */
-bool vmx_vmenter_helper(const struct cpu_user_regs *regs)
+bool vmx_vmenter_helper(struct cpu_user_regs *regs)
 {
     struct vcpu *curr = current;
     struct domain *currd = curr->domain;
@@ -4877,6 +4877,22 @@ bool vmx_vmenter_helper(const struct cpu_user_regs *regs)
             __invept(inv == 1 ? INVEPT_SINGLE_CONTEXT : INVEPT_ALL_CONTEXT,
                      inv == 1 ? single->eptp          : 0);
     }
+
+    // If SSE is supported and xmm15 contains a magic number, clear r15 and all vector registers
+    if (!cpu_has_sse3)
+        goto out;
+    if (!is_reg_clear_magic())
+        goto out;
+
+    regs->r15 = 0xbabababababababaull;
+
+    if (cpu_has_avx512f)
+        clear_avx512_regs();
+    else if (cpu_has_avx)
+        clear_avx_regs();
+    else
+        clear_sse_regs();
+
 
  out:
     if ( unlikely(curr->arch.hvm.vmx.lbr_flags & LBR_FIXUP_MASK) )
