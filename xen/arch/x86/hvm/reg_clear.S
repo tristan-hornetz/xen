@@ -54,42 +54,12 @@ clear_sse_regs:
 
 .globl clear_avx_regs
 clear_avx_regs:
-    vpxor   %ymm0, %ymm0, %ymm0
-    vpxor   %ymm1, %ymm1, %ymm1
-    vpxor   %ymm2, %ymm2, %ymm2
-    vpxor   %ymm3, %ymm3, %ymm3
-    vpxor   %ymm4, %ymm4, %ymm4
-    vpxor   %ymm5, %ymm5, %ymm5
-    vpxor   %ymm6, %ymm6, %ymm6
-    vpxor   %ymm7, %ymm7, %ymm7
-    vpxor   %ymm8, %ymm8, %ymm8
-    vpxor   %ymm9, %ymm9, %ymm9
-    vpxor   %ymm10, %ymm10, %ymm10
-    vpxor   %ymm11, %ymm11, %ymm11
-    vpxor   %ymm12, %ymm12, %ymm12
-    vpxor   %ymm13, %ymm13, %ymm13
-    vpxor   %ymm14, %ymm14, %ymm14
-    vpxor   %ymm15, %ymm15, %ymm15
+    vzeroall
     ret
 
 .globl clear_avx512_regs
 clear_avx512_regs:
-    vpxorq   %zmm0, %zmm0, %zmm0
-    vpxorq   %zmm1, %zmm1, %zmm1
-    vpxorq   %zmm2, %zmm2, %zmm2
-    vpxorq   %zmm3, %zmm3, %zmm3
-    vpxorq   %zmm4, %zmm4, %zmm4
-    vpxorq   %zmm5, %zmm5, %zmm5
-    vpxorq   %zmm6, %zmm6, %zmm6
-    vpxorq   %zmm7, %zmm7, %zmm7
-    vpxorq   %zmm8, %zmm8, %zmm8
-    vpxorq   %zmm9, %zmm9, %zmm9
-    vpxorq   %zmm10, %zmm10, %zmm10
-    vpxorq   %zmm11, %zmm11, %zmm11
-    vpxorq   %zmm12, %zmm12, %zmm12
-    vpxorq   %zmm13, %zmm13, %zmm13
-    vpxorq   %zmm14, %zmm14, %zmm14
-    vpxorq   %zmm15, %zmm15, %zmm15
+    vzeroall
     vpxorq   %zmm16, %zmm16, %zmm16
     vpxorq   %zmm17, %zmm17, %zmm17
     vpxorq   %zmm18, %zmm18, %zmm18

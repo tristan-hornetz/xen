@@ -1,19 +1,29 @@
 #include <generated/autoconf.h>
 #ifdef CONFIG_HVM
+#define GUEST_PAGING_LEVELS 4
 #include <xen/mem_access.h>
 #include <xen/sched.h>
 #include <xen/list.h>
 #include <xen/xmalloc.h>
 #include <xen/guest_access.h>
+#include <xen/domain_page.h>
 #include <public/xen.h>
 #include <asm/p2m.h>
 #include <asm/event.h>
+#include <asm/page.h>
+#include <asm/guest_pt.h>
 #include <asm/hvm/vmx/vmx.h>
 #include <asm/hvm/vmx/vmcs.h>
 #include "mm/mm-locks.h"
 
 #define SUBPAGE_SIZE (PAGE_SIZE / (sizeof(uint32_t) << 3))
 #define MAX_SUBPAGES_PER_CMD ((PAGE_SIZE - sizeof(uint8_t)) / (sizeof(xom_subpage_write_info)))
+
+#ifndef XOM_TYPE_NONE
+#define XOM_TYPE_NONE       0
+#define XOM_TYPE_PAGE       1
+#define XOM_TYPE_SUBPAGE    2
+#endif
 
 struct {
     struct list_head lhead;
@@ -31,13 +41,13 @@ struct {
     xom_subpage_write_info write_info [MAX_SUBPAGES_PER_CMD];
 } typedef xom_subpage_write_command;
 
-static xom_subpage* get_subpage_info_entry(struct domain* d, gfn_t gfn){
-    struct list_head* lhead = &d->xom_subpages, *next = lhead->next, *last;
+static xom_subpage* get_subpage_info_entry(const struct domain* d, const gfn_t gfn){
+    const struct list_head* lhead = &d->xom_subpages;
+    struct list_head *next = lhead->next;
 
     while(next != lhead){
         if(((xom_subpage*)next)->gfn.gfn == gfn.gfn)
-            return ((xom_subpage*)next);
-        last = next;
+            return (xom_subpage*)next;
         next = next->next;
     }
     return NULL;
@@ -396,6 +406,57 @@ void free_xen_subpages(struct list_head* lhead){
         next = next->next;
         xfree(last);
     }
+}
+
+unsigned char get_xom_type(const struct cpu_user_regs* regs) {
+    bool ok;
+    p2m_type_t ptype;
+    p2m_access_t atype;
+    walk_t gw;
+    mfn_t root_mfn;
+    gfn_t root_gfn = {vmr(GUEST_CR3) & ~0xffful}, instr_gfn;
+    void *root_map;
+    const uint32_t pfec = regs->error_code;
+    struct domain *d = current->domain;
+    struct p2m_domain* p2m;
+    const unsigned long va = regs->rip & ~0xfffull;
+    const struct page_info* page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
+
+    if(is_reg_clear_magic()) {
+        gdprintk(XENLOG_WARNING, "Enter get_xom_type: RIP: 0x%lx, root_gfn: 0x%lx\n", regs->rip, root_gfn.gfn);
+    }
+    if (!page)
+        return XOM_TYPE_NONE;
+
+    root_mfn = page_to_mfn(page);
+    p2m = p2m_get_hostp2m(d);
+    root_map = map_domain_page(root_mfn);
+
+    ok = guest_walk_tables(current, p2m, va, &gw, pfec,
+                                root_gfn, root_mfn, root_map);
+
+    unmap_domain_page(root_map);
+
+    if(is_reg_clear_magic()) {
+        gdprintk(XENLOG_WARNING, "root_mfn: 0x%lx, root_map: 0x%lx, ok: %u\n", root_mfn.mfn, (unsigned long) root_map, ok);
+    }
+
+    if(!ok)
+        return XOM_TYPE_NONE;
+
+    instr_gfn = guest_walk_to_gfn(&gw);
+
+    if(is_reg_clear_magic()) {
+        gdprintk(XENLOG_WARNING, "instr_gfn: 0x%lx\n", instr_gfn.gfn);
+    }
+    p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
+    if (atype != p2m_access_x)
+        return XOM_TYPE_NONE;
+
+    if(get_subpage_info_entry(d, instr_gfn))
+        return XOM_TYPE_SUBPAGE;
+
+    return XOM_TYPE_PAGE;
 }
 
 #endif // CONFIG_HVM

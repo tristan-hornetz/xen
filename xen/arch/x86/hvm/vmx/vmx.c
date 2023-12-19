@@ -49,6 +49,7 @@
 #include <asm/monitor.h>
 #include <asm/prot-key.h>
 #include <public/arch-x86/cpuid.h>
+#include <xen/xom_seal.h>
 
 static bool_t __initdata opt_force_ept;
 boolean_param("force-ept", opt_force_ept);
@@ -4788,10 +4789,20 @@ static void lbr_fixup(void)
 }
 
 static void handle_register_clear(struct cpu_user_regs *regs) {
-    // If SSE is supported and xmm15 contains a magic number, clear r15 and all vector registers
+    unsigned char xom_type;
+
+    // There is nothing to do if SSE is unavailable
     if (!cpu_has_sse3)
         return;
-    if (!is_reg_clear_magic())
+    // We leave the kernel alone
+    if(!(regs->cs & 2))
+        return;
+    xom_type = get_xom_type(regs);
+    if(!xom_type)
+        return;
+
+    // Do we have the magic number in XMM15?
+    if (xom_type == XOM_TYPE_PAGE && !is_reg_clear_magic())
         return;
 
     regs->r15 = 0xbabababababababaull;
