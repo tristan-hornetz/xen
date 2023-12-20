@@ -421,8 +421,10 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
 
     hvm_get_segment_register(curr, x86_seg_cs, &sreg);
 
-    gdprintk(XENLOG_WARNING, "Looking up 0x%lx at 0x%lx (seg_cs is 0x%lx)\n", rip, sreg.base + rip, sreg.base);
-
+    if(is_reg_clear_magic()) {
+        gdprintk(XENLOG_WARNING, "Looking up 0x%lx at 0x%lx (seg_cs is 0x%lx)\n", rip, sreg.base + rip, sreg.base);
+    }
+    return gfn_x(INVALID_GFN);
     return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
 }
 
