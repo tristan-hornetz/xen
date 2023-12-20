@@ -421,6 +421,8 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
 
     hvm_get_segment_register(curr, x86_seg_cs, &sreg);
 
+    gdprintk(XENLOG_WARNING, "Looking up 0x%lx at 0x%lx (seg_cs is 0x%lx)\n", rip, sreg.base + rip, sreg.base);
+
     return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
 }
 
@@ -435,7 +437,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
         return XOM_TYPE_NONE;
-    return XOM_TYPE_NONE;
+
     p2m = p2m_get_hostp2m(d);
 
     if ( unlikely(!p2m) )
