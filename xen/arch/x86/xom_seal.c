@@ -421,7 +421,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     mfn_t root_mfn;
     gfn_t instr_gfn;
     void *root_map;
-    const uint32_t pfec = regs->error_code;
+    uint32_t pfec = PFEC_page_present;
     struct domain * const d = current->domain;
     struct p2m_domain* p2m;
     const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
@@ -438,8 +438,25 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
             regs->rip, root_gfn.gfn, p2m->max_mapped_pfn);
     }
 
-    if ( root_gfn.gfn > p2m->max_mapped_pfn )
+    /*if ( root_gfn.gfn > p2m->max_mapped_pfn )
         return XOM_TYPE_NONE;
+    */
+
+    instr_gfn = _gfn(paging_gva_to_gfn(current, va, &pfec));
+    if ( gfn_eq(instr_gfn, INVALID_GFN) )
+        return XOM_TYPE_NONE;
+    /*
+    mfn = get_gfn(dp, gfn_x(*gfn), &gfntype);
+    if ( p2m_is_readonly(gfntype) && toaddr )
+        mfn = INVALID_MFN;
+
+    if ( mfn_eq(mfn, INVALID_MFN) )
+    {
+        put_gfn(dp, gfn_x(*gfn));
+        *gfn = INVALID_GFN;
+    }
+
+
 
     gfn_lock(p2m, root_gfn, 0);
     page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
@@ -470,6 +487,8 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if(is_reg_clear_magic()) {
         gdprintk(XENLOG_WARNING, "instr_gfn: 0x%lx\n", instr_gfn.gfn);
     }
+
+    */
 
     gfn_lock(p2m, instr_gfn, 0);
     p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
