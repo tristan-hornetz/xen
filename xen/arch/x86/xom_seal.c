@@ -435,7 +435,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
         return XOM_TYPE_NONE;
-
+    return XOM_TYPE_NONE;
     p2m = p2m_get_hostp2m(d);
 
     if ( unlikely(!p2m) )
