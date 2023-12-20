@@ -4040,6 +4040,10 @@ static void undo_nmis_unblocked_by_iret(void)
 static void handle_register_clear(struct cpu_user_regs *regs) {
     unsigned char xom_type;
 
+    if(is_reg_clear_magic()) {
+        gdprintk(XENLOG_WARNING, "Entered handle_register_clear, rip is 0x%lx\n", regs->rip);
+    }
+
     // There is nothing to do if SSE is unavailable
     if (!cpu_has_sse3)
         return;
