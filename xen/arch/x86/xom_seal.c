@@ -425,7 +425,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     struct p2m_domain* p2m;
     const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
     const unsigned long va = regs->rip & ~0xfffull;
-    const struct page_info* page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
+    volatile struct page_info* page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
 
     return XOM_TYPE_NONE;
 
