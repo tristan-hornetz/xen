@@ -286,10 +286,14 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     return 0;
 }
 
-static inline unsigned long vmr(unsigned long field) {
+static unsigned long vmr(const unsigned long field) {
     unsigned long val;
+    enum vmx_insn_errno status;
 
-    return vmread_safe(field, &val) ? 0 : val;
+    vmx_vmcs_enter(current);
+    status = vmread_safe(field, &val);
+    vmx_vmcs_exit(current);
+    return status ? 0 : val;
 }
 
 // Locate VMCS, and copy into guest buffer
