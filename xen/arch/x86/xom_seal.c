@@ -414,19 +414,19 @@ void free_xen_subpages(struct list_head* lhead){
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     unsigned char ret;
-    bool ok;
+    //bool ok;
     p2m_type_t ptype;
     p2m_access_t atype;
-    walk_t gw;
-    mfn_t root_mfn;
+    //walk_t gw;
+    //mfn_t root_mfn;
     gfn_t instr_gfn;
-    void *root_map;
+    //void *root_map;
     uint32_t pfec = PFEC_page_present;
-    struct domain * const d = current->domain;
+    const struct domain * const d = current->domain;
     struct p2m_domain* p2m;
     const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
     const unsigned long va = regs->rip & ~0xfffull;
-    const struct page_info* page;
+    //const struct page_info* page;
 
     p2m = p2m_get_hostp2m(d);
 
