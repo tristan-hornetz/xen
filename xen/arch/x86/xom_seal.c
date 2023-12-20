@@ -286,6 +286,7 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     return 0;
 }
 
+/*
 static unsigned long vmr(const unsigned long field) {
     unsigned long val;
     enum vmx_insn_errno status;
@@ -294,7 +295,7 @@ static unsigned long vmr(const unsigned long field) {
     status = vmread_safe(field, &val);
     vmx_vmcs_exit(current);
     return status ? 0 : val;
-}
+}*/
 
 // Locate VMCS, and copy into guest buffer
 static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
@@ -435,7 +436,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     //mfn_t root_mfn;
     gfn_t instr_gfn;
     //void *root_map;
-    uint32_t pfec = PFEC_page_present;
+    //uint32_t pfec = PFEC_page_present;
     const struct domain * const d = current->domain;
     struct p2m_domain* p2m;
     //const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
