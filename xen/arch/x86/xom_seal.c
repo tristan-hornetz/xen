@@ -425,8 +425,9 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     struct p2m_domain* p2m;
     const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
     const unsigned long va = regs->rip & ~0xfffull;
+    const struct page_info* page;
     return XOM_TYPE_NONE;
-    const struct page_info* page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
+    page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
 
     if(is_reg_clear_magic()) {
         gdprintk(XENLOG_WARNING, "Enter get_xom_type: RIP: 0x%lx, root_gfn: 0x%lx\n", regs->rip, root_gfn.gfn);
