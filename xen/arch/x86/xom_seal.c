@@ -426,8 +426,8 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     unsigned char ret;
-    p2m_type_t ptype;
-    p2m_access_t atype;
+    p2m_type_t ptype = 0;
+    p2m_access_t atype = 0;
     gfn_t instr_gfn;
     const struct domain * const d = current->domain;
     struct p2m_domain* p2m;
@@ -446,15 +446,14 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
 
     gfn_lock(p2m, instr_gfn, 0);
     p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
+    gfn_unlock(p2m, instr_gfn, 0);
 
-    if (atype != p2m_access_x)
+    if (likely(atype != p2m_access_x))
         ret = XOM_TYPE_NONE;
     else if (get_subpage_info_entry(d, instr_gfn))
         ret = XOM_TYPE_SUBPAGE;
     else
         ret = XOM_TYPE_PAGE;
-
-    gfn_unlock(p2m, root_gfn, 0);
 
     return ret;
 }
