@@ -440,6 +440,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if ( root_gfn.gfn > p2m->max_mapped_pfn )
         return XOM_TYPE_NONE;
 
+    return XOM_TYPE_NONE;
     page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
 
     if (!page || !~(uintptr_t)page)
