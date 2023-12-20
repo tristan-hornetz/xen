@@ -408,17 +408,18 @@ void free_xen_subpages(struct list_head* lhead){
     }
 }
 
-unsigned char get_xom_type(const struct cpu_user_regs* regs) {
+unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     bool ok;
     p2m_type_t ptype;
     p2m_access_t atype;
     walk_t gw;
     mfn_t root_mfn;
-    gfn_t root_gfn = {vmr(GUEST_CR3) & ~0xffful}, instr_gfn;
+    gfn_t instr_gfn;
     void *root_map;
     const uint32_t pfec = regs->error_code;
-    struct domain *d = current->domain;
+    struct domain * const d = current->domain;
     struct p2m_domain* p2m;
+    const gfn_t root_gfn = {vmr(GUEST_CR3) & ~0xffful};
     const unsigned long va = regs->rip & ~0xfffull;
     const struct page_info* page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
 

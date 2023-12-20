@@ -4798,9 +4798,9 @@ static void handle_register_clear(struct cpu_user_regs *regs) {
     if(!(regs->cs & 2))
         return;
     xom_type = get_xom_type(regs);
+
     if(!xom_type)
         return;
-
     // Do we have the magic number in XMM15?
     if (xom_type == XOM_TYPE_PAGE && !is_reg_clear_magic())
         return;
