@@ -446,7 +446,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
         gdprintk(XENLOG_WARNING, "root_mfn: 0x%lx, root_map: 0x%lx, ok: %u\n", root_mfn.mfn, (unsigned long) root_map, ok);
     }
 
-    if(!ok)
+    if(1)//!ok)
         return XOM_TYPE_NONE;
 
     instr_gfn = guest_walk_to_gfn(&gw);
