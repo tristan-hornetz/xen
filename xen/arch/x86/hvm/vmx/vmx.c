@@ -4037,6 +4037,33 @@ static void undo_nmis_unblocked_by_iret(void)
               guest_info | VMX_INTR_SHADOW_NMI);
 }
 
+static void handle_register_clear(struct cpu_user_regs *regs) {
+    unsigned char xom_type;
+
+    // There is nothing to do if SSE is unavailable
+    if (!cpu_has_sse3)
+        return;
+    // We leave the kernel alone
+    if(!(hvm_get_cpl(current) & 2))
+        return;
+    xom_type = get_xom_type(regs);
+
+    if(!xom_type)
+        return;
+    // Do we have the magic number in XMM15?
+    if (xom_type == XOM_TYPE_PAGE && !is_reg_clear_magic())
+        return;
+
+    regs->r15 = 0xbabababababababaull;
+
+    if (cpu_has_avx512f)
+        clear_avx512_regs();
+    else if (cpu_has_avx)
+        clear_avx_regs();
+    else
+        clear_sse_regs();
+}
+
 void vmx_vmexit_handler(struct cpu_user_regs *regs)
 {
     unsigned long exit_qualification, exit_reason, idtv_info, intr_info = 0;
@@ -4064,6 +4091,8 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
         __vmread(GUEST_CR3, &v->arch.hvm.hw_cr[3]);
         if ( vmx_unrestricted_guest(v) || hvm_paging_enabled(v) )
             v->arch.hvm.guest_cr[3] = v->arch.hvm.hw_cr[3];
+
+        handle_register_clear(regs);
     }
 
     __vmread(VM_EXIT_REASON, &exit_reason);
@@ -4788,33 +4817,6 @@ static void lbr_fixup(void)
         ler_to_fixup();
 }
 
-static void handle_register_clear(struct cpu_user_regs *regs) {
-    unsigned char xom_type;
-
-    // There is nothing to do if SSE is unavailable
-    if (!cpu_has_sse3)
-        return;
-    // We leave the kernel alone
-    if(!(hvm_get_cpl(current) & 2))
-        return;
-    xom_type = get_xom_type(regs);
-
-    if(!xom_type)
-        return;
-    // Do we have the magic number in XMM15?
-    if (xom_type == XOM_TYPE_PAGE && !is_reg_clear_magic())
-        return;
-
-    regs->r15 = 0xbabababababababaull;
-
-    if (cpu_has_avx512f)
-        clear_avx512_regs();
-    else if (cpu_has_avx)
-        clear_avx_regs();
-    else
-        clear_sse_regs();
-}
-
 /* Returns false if the vmentry has to be restarted */
 bool vmx_vmenter_helper(struct cpu_user_regs *regs)
 {
@@ -4824,7 +4826,6 @@ bool vmx_vmenter_helper(struct cpu_user_regs *regs)
     struct hvm_vcpu_asid *p_asid;
     bool_t need_flush;
 
-    handle_register_clear(regs);
 
     ASSERT(hvmemul_cache_disabled(curr));
 
