@@ -413,14 +413,11 @@ void free_xen_subpages(struct list_head* lhead){
     }
 }
 
-static inline unsigned long gfn_of_rip(unsigned long rip)
+static inline unsigned long gfn_of_rip(const unsigned long rip)
 {
     struct vcpu *curr = current;
     struct segment_register sreg;
-    uint32_t pfec = PFEC_page_present | PFEC_insn_fetch;
-
-    if ( hvm_get_cpl(curr) == 3 )
-        pfec |= PFEC_user_mode;
+    uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
 
     hvm_get_segment_register(curr, x86_seg_cs, &sreg);
 
@@ -429,28 +426,23 @@ static inline unsigned long gfn_of_rip(unsigned long rip)
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     unsigned char ret;
-    //bool ok;
     p2m_type_t ptype;
     p2m_access_t atype;
-    //walk_t gw;
-    //mfn_t root_mfn;
     gfn_t instr_gfn;
-    //void *root_map;
-    //uint32_t pfec = PFEC_page_present;
     const struct domain * const d = current->domain;
     struct p2m_domain* p2m;
-    //const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
-    //const struct page_info* page;
+
+    instr_gfn = _gfn(gfn_of_rip(regs->rip));
+    if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
+        return XOM_TYPE_NONE;
 
     p2m = p2m_get_hostp2m(d);
 
-    if(!p2m)
+    if ( unlikely(!p2m) )
         return XOM_TYPE_NONE;
 
-    instr_gfn = _gfn(gfn_of_rip(regs->rip));
-    if ( gfn_eq(instr_gfn, INVALID_GFN) )
+    if ( unlikely(instr_gfn.gfn > p2m->max_mapped_pfn) )
         return XOM_TYPE_NONE;
-
 
     gfn_lock(p2m, instr_gfn, 0);
     p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
