@@ -10,6 +10,7 @@
 #include <xen/stdarg.h>
 #include <xen/types.h>
 #include <xen/xmalloc.h>
+#include <asm/current.h>
 #include <xen/string.h>
 
 #define BUG_ON(p)  do { if (unlikely(p)) BUG();  } while (0)
@@ -23,7 +24,7 @@
 
 #ifndef NDEBUG
 #define ASSERT(p) \
-    do { if ( unlikely(!(p)) ) assert_failed(#p); } while (0)
+    do { if ( unlikely(!(p)) ) gdprintk(XENLOG_ERR, "Assertion failed! "__FILE__":%u\n", __LINE__); } while (0)
 #define ASSERT_UNREACHABLE() assert_failed("unreachable")
 #else
 #define ASSERT(p) do { if ( 0 && (p) ) {} } while (0)

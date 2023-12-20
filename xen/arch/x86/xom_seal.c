@@ -1,3 +1,4 @@
+#include <asm/hvm/nestedhvm.h>
 #include <generated/autoconf.h>
 #ifdef CONFIG_HVM
 #define GUEST_PAGING_LEVELS 4
@@ -413,6 +414,50 @@ void free_xen_subpages(struct list_head* lhead){
     }
 }
 
+static unsigned long paging_gva_to_gfn_local(struct vcpu *v,
+                                unsigned long va,
+                                uint32_t *pfec)
+{
+    struct p2m_domain *hostp2m = p2m_get_hostp2m(v->domain);
+    const struct paging_mode *hostmode = paging_get_hostmode(v);
+
+    if ( is_hvm_vcpu(v) && paging_mode_hap(v->domain) && nestedhvm_is_n2(v) )
+    {
+        unsigned long l2_gfn, l1_gfn;
+        paddr_t l1_gpa;
+        struct p2m_domain *p2m;
+        const struct paging_mode *mode;
+        uint8_t l1_p2ma;
+        unsigned int l1_page_order;
+        struct npfec npfec = {
+            .read_access  = 1,
+            .write_access = *pfec & PFEC_write_access,
+            .insn_fetch   = *pfec & PFEC_insn_fetch,
+        };
+        int rv;
+
+        /* translate l2 guest va into l2 guest gfn */
+        p2m = p2m_get_nestedp2m(v);
+        mode = paging_get_nestedmode(v);
+        l2_gfn = mode->gva_to_gfn(v, p2m, va, pfec);
+
+        if ( l2_gfn == gfn_x(INVALID_GFN) )
+            return gfn_x(INVALID_GFN);
+
+        rv = nhvm_hap_walk_L1_p2m(
+            v, pfn_to_paddr(l2_gfn), &l1_gpa, &l1_page_order, &l1_p2ma, npfec);
+
+        if ( rv != NESTEDHVM_PAGEFAULT_DONE )
+            return gfn_x(INVALID_GFN);
+
+        l1_gfn = paddr_to_pfn(l1_gpa);
+
+        return l1_gfn;
+    }
+
+    return hostmode->gva_to_gfn(v, hostp2m, va, pfec);
+}
+
 static inline unsigned long gfn_of_rip(const unsigned long rip)
 {
     struct vcpu *curr = current;
@@ -421,7 +466,7 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
 
     hvm_get_segment_register(curr, x86_seg_cs, &sreg);
 
-    return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
+    return paging_gva_to_gfn_local(curr, sreg.base + rip, &pfec);
 }
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
