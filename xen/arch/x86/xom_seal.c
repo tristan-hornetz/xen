@@ -423,14 +423,14 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     const uint32_t pfec = regs->error_code;
     struct domain * const d = current->domain;
     struct p2m_domain* p2m;
-    const gfn_t root_gfn = {vmr(GUEST_CR3) & ~0xffful};
+    const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
     const unsigned long va = regs->rip & ~0xfffull;
     const struct page_info* page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
 
     if(is_reg_clear_magic()) {
         gdprintk(XENLOG_WARNING, "Enter get_xom_type: RIP: 0x%lx, root_gfn: 0x%lx\n", regs->rip, root_gfn.gfn);
     }
-    if (!page)
+    if (!page || !~(uintptr_t)page)
         return XOM_TYPE_NONE;
 
     root_mfn = page_to_mfn(page);
