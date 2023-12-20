@@ -413,6 +413,7 @@ void free_xen_subpages(struct list_head* lhead){
 }
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
+    unsigned char ret;
     bool ok;
     p2m_type_t ptype;
     p2m_access_t atype;
@@ -440,11 +441,13 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if ( root_gfn.gfn > p2m->max_mapped_pfn )
         return XOM_TYPE_NONE;
 
-    return XOM_TYPE_NONE;
+    gfn_lock(p2m, root_gfn, 0);
     page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
 
-    if (!page || !~(uintptr_t)page)
+    if (!page || !~(uintptr_t)page) {
+        gfn_unlock(p2m, root_gfn, 0);
         return XOM_TYPE_NONE;
+    }
 
     root_mfn = page_to_mfn(page);
     root_map = map_domain_page(root_mfn);
@@ -453,6 +456,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
                                 root_gfn, root_mfn, root_map);
 
     unmap_domain_page(root_map);
+    gfn_unlock(p2m, root_gfn, 0);
 
     if(is_reg_clear_magic()) {
         gdprintk(XENLOG_WARNING, "root_mfn: 0x%lx, root_map: 0x%lx, ok: %u\n", root_mfn.mfn, (unsigned long) root_map, ok);
@@ -466,14 +470,20 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if(is_reg_clear_magic()) {
         gdprintk(XENLOG_WARNING, "instr_gfn: 0x%lx\n", instr_gfn.gfn);
     }
+
+    gfn_lock(p2m, instr_gfn, 0);
     p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
+
     if (atype != p2m_access_x)
-        return XOM_TYPE_NONE;
+        ret = XOM_TYPE_NONE;
+    else if (get_subpage_info_entry(d, instr_gfn))
+        ret = XOM_TYPE_SUBPAGE;
+    else
+        ret = XOM_TYPE_PAGE;
 
-    if(get_subpage_info_entry(d, instr_gfn))
-        return XOM_TYPE_SUBPAGE;
+    gfn_unlock(p2m, root_gfn, 0);
 
-    return XOM_TYPE_PAGE;
+    return ret;
 }
 
 #endif // CONFIG_HVM
