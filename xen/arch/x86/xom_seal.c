@@ -412,6 +412,20 @@ void free_xen_subpages(struct list_head* lhead){
     }
 }
 
+static inline unsigned long gfn_of_rip(unsigned long rip)
+{
+    struct vcpu *curr = current;
+    struct segment_register sreg;
+    uint32_t pfec = PFEC_page_present | PFEC_insn_fetch;
+
+    if ( hvm_get_cpl(curr) == 3 )
+        pfec |= PFEC_user_mode;
+
+    hvm_get_segment_register(curr, x86_seg_cs, &sreg);
+
+    return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
+}
+
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     unsigned char ret;
     //bool ok;
@@ -424,8 +438,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     uint32_t pfec = PFEC_page_present;
     const struct domain * const d = current->domain;
     struct p2m_domain* p2m;
-    const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
-    const unsigned long va = regs->rip & ~0xfffull;
+    //const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
     //const struct page_info* page;
 
     p2m = p2m_get_hostp2m(d);
@@ -433,62 +446,10 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if(!p2m)
         return XOM_TYPE_NONE;
 
-    if(is_reg_clear_magic()) {
-        gdprintk(XENLOG_WARNING, "Enter get_xom_type: RIP: 0x%lx, root_gfn: 0x%lx, max_mapped: 0x%lx\n",
-            regs->rip, root_gfn.gfn, p2m->max_mapped_pfn);
-    }
-
-    /*if ( root_gfn.gfn > p2m->max_mapped_pfn )
-        return XOM_TYPE_NONE;
-    */
-
-    instr_gfn = _gfn(paging_gva_to_gfn(current, va, &pfec));
+    instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( gfn_eq(instr_gfn, INVALID_GFN) )
         return XOM_TYPE_NONE;
-    /*
-    mfn = get_gfn(dp, gfn_x(*gfn), &gfntype);
-    if ( p2m_is_readonly(gfntype) && toaddr )
-        mfn = INVALID_MFN;
 
-    if ( mfn_eq(mfn, INVALID_MFN) )
-    {
-        put_gfn(dp, gfn_x(*gfn));
-        *gfn = INVALID_GFN;
-    }
-
-
-
-    gfn_lock(p2m, root_gfn, 0);
-    page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
-
-    if (!page || !~(uintptr_t)page) {
-        gfn_unlock(p2m, root_gfn, 0);
-        return XOM_TYPE_NONE;
-    }
-
-    root_mfn = page_to_mfn(page);
-    root_map = map_domain_page(root_mfn);
-
-    ok = guest_walk_tables(current, p2m, va, &gw, pfec,
-                                root_gfn, root_mfn, root_map);
-
-    unmap_domain_page(root_map);
-    gfn_unlock(p2m, root_gfn, 0);
-
-    if(is_reg_clear_magic()) {
-        gdprintk(XENLOG_WARNING, "root_mfn: 0x%lx, root_map: 0x%lx, ok: %u\n", root_mfn.mfn, (unsigned long) root_map, ok);
-    }
-
-    if(!ok)
-        return XOM_TYPE_NONE;
-
-    instr_gfn = guest_walk_to_gfn(&gw);
-
-    if(is_reg_clear_magic()) {
-        gdprintk(XENLOG_WARNING, "instr_gfn: 0x%lx\n", instr_gfn.gfn);
-    }
-
-    */
 
     gfn_lock(p2m, instr_gfn, 0);
     p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);

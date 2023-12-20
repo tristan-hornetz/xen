@@ -4795,7 +4795,7 @@ static void handle_register_clear(struct cpu_user_regs *regs) {
     if (!cpu_has_sse3)
         return;
     // We leave the kernel alone
-    if(!(regs->cs & 2))
+    if(!(hvm_get_cpl(current) & 2))
         return;
     xom_type = get_xom_type(regs);
 
