@@ -426,17 +426,26 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     const gfn_t root_gfn = {vmr(GUEST_CR3) >> PAGE_SHIFT};
     const unsigned long va = regs->rip & ~0xfffull;
     const struct page_info* page;
-    return XOM_TYPE_NONE;
-    page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
+
+    p2m = p2m_get_hostp2m(d);
+
+    if(!p2m)
+        return XOM_TYPE_NONE;
 
     if(is_reg_clear_magic()) {
-        gdprintk(XENLOG_WARNING, "Enter get_xom_type: RIP: 0x%lx, root_gfn: 0x%lx\n", regs->rip, root_gfn.gfn);
+        gdprintk(XENLOG_WARNING, "Enter get_xom_type: RIP: 0x%lx, root_gfn: 0x%lx, max_mapped: 0x%lx\n",
+            regs->rip, root_gfn.gfn, p2m->max_mapped_pfn);
     }
+
+    if ( root_gfn.gfn > p2m->max_mapped_pfn )
+        return XOM_TYPE_NONE;
+
+    page = get_page_from_gfn(d, root_gfn.gfn, NULL, P2M_ALLOC);
+
     if (!page || !~(uintptr_t)page)
         return XOM_TYPE_NONE;
 
     root_mfn = page_to_mfn(page);
-    p2m = p2m_get_hostp2m(d);
     root_map = map_domain_page(root_mfn);
 
     ok = guest_walk_tables(current, p2m, va, &gw, pfec,
