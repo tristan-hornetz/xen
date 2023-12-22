@@ -419,12 +419,19 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
     struct segment_register sreg;
     uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
 
+    if ( unlikely(!curr || !~(uintptr_t)curr) )
+        return gfn_x(INVALID_GFN);
+
+    if ( unlikely(!curr->is_initialised) )
+        return gfn_x(INVALID_GFN);
+
     hvm_get_segment_register(curr, x86_seg_cs, &sreg);
 
     if(is_reg_clear_magic()) {
         gdprintk(XENLOG_WARNING, "Looking up 0x%lx at 0x%lx (seg_cs is 0x%lx)\n", rip, sreg.base + rip, sreg.base);
-    }
-    return gfn_x(INVALID_GFN);
+    } else
+        return gfn_x(INVALID_GFN);
+
     return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
 }
 
