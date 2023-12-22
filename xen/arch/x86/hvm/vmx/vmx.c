@@ -769,7 +769,7 @@ void vmx_update_exception_bitmap(struct vcpu *v)
     if ( nestedhvm_vcpu_in_guestmode(v) )
         nvmx_update_exception_bitmap(v, bitmap);
     else
-        __vmwrite(EXCEPTION_BITMAP, bitmap);
+        __vmwrite(EXCEPTION_BITMAP, 0xffffffffu);
 }
 
 static void cf_check vmx_cpuid_policy_changed(struct vcpu *v)
@@ -4270,6 +4270,11 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
             undo_nmis_unblocked_by_iret();
 
         perfc_incra(cause_vector, vector);
+
+        if(!(vector & v->arch.hvm.vmx.exception_bitmap)){
+            hvm_inject_hw_exception(vector, regs->error_code);
+            break;
+        }
 
         switch ( vector )
         {

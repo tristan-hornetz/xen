@@ -558,12 +558,9 @@ static inline void hvm_invlpg(struct vcpu *v, unsigned long linear)
     (X86_CR4_VMXE | X86_CR4_PAE | X86_CR4_MCE))
 
 /* These exceptions must always be intercepted. */
-/*#define HVM_TRAP_MASK ((1U << X86_EXC_DB)           | \
+#define HVM_TRAP_MASK ((1U << X86_EXC_DB)           | \
                        (1U << X86_EXC_AC) | \
-                       (1U << X86_EXC_MC))*/
-
-
-#define HVM_TRAP_MASK 0xffffffffu
+                       (1U << X86_EXC_MC))
 
 /* Called in boot/resume paths.  Must cope with no HVM support. */
 static inline int hvm_cpu_up(void)
