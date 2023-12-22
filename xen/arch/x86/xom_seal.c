@@ -1,29 +1,23 @@
 #include <generated/autoconf.h>
 #ifdef CONFIG_HVM
-#define GUEST_PAGING_LEVELS 4
 #include <xen/mem_access.h>
 #include <xen/sched.h>
 #include <xen/list.h>
 #include <xen/xmalloc.h>
 #include <xen/guest_access.h>
 #include <xen/domain_page.h>
+#include <xen/xom_seal.h>
 #include <public/xen.h>
 #include <asm/p2m.h>
 #include <asm/event.h>
 #include <asm/page.h>
-#include <asm/guest_pt.h>
 #include <asm/hvm/vmx/vmx.h>
 #include <asm/hvm/vmx/vmcs.h>
 #include "mm/mm-locks.h"
 
+
 #define SUBPAGE_SIZE (PAGE_SIZE / (sizeof(uint32_t) << 3))
 #define MAX_SUBPAGES_PER_CMD ((PAGE_SIZE - sizeof(uint8_t)) / (sizeof(xom_subpage_write_info)))
-
-#ifndef XOM_TYPE_NONE
-#define XOM_TYPE_NONE       0
-#define XOM_TYPE_PAGE       1
-#define XOM_TYPE_SUBPAGE    2
-#endif
 
 struct {
     struct list_head lhead;
@@ -352,7 +346,7 @@ static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
     return rc;
 }
 
-int handle_xom_seal(const struct vcpu* curr,
+int handle_xom_seal(struct vcpu* curr,
                     XEN_GUEST_HANDLE_PARAM(mmuext_op_t) uops, unsigned int count, XEN_GUEST_HANDLE_PARAM(uint) pdone) {
     int rc;
     unsigned int i;
@@ -417,6 +411,8 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
 {
     struct vcpu *curr = current;
     struct segment_register sreg;
+    struct p2m_domain *hostp2m = p2m_get_hostp2m(curr->domain);
+    const struct paging_mode *hostmode = paging_get_hostmode(curr);
     uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
 
     if ( unlikely(!curr || !~(uintptr_t)curr) )
@@ -432,7 +428,7 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
     } else
         return gfn_x(INVALID_GFN);
 
-    return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
+    return hostmode->gva_to_gfn(curr, hostp2m, sreg.base + rip, &pfec);
 }
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
