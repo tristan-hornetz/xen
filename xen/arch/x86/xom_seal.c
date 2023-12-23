@@ -429,10 +429,10 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
             gdprintk(XENLOG_WARNING, "Hostmode is NULL!\n");
         else
             gdprintk(XENLOG_WARNING, "Guest Levels: %u\n", hostmode->guest_levels);
-    } else
+
         return gfn_x(INVALID_GFN);
     // paging_gva_to_gfn(struct vcpu *v, unsigned long va, uint32_t *pfec)
-    return hostmode->gva_to_gfn(curr, hostp2m, sreg.base + rip, &pfec);
+    // return hostmode->gva_to_gfn(curr, hostp2m, sreg.base + rip, &pfec);
 }
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
