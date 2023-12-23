@@ -286,6 +286,9 @@ mfn_t p2m_get_gfn_type_access(struct p2m_domain *p2m, gfn_t gfn,
 
     mfn = p2m->get_entry(p2m, gfn, t, a, q, page_order, NULL);
 
+    if(is_reg_clear_magic())
+        return INVALID_MFN;
+
     /* Check if we need to fork the page */
     if ( (q & P2M_ALLOC) && p2m_is_hole(*t) &&
          !mem_sharing_fork_page(p2m->domain, gfn, q & P2M_UNSHARE) )
@@ -341,10 +344,7 @@ struct page_info *p2m_get_page_from_gfn(
         /* Fast path: look up and get out */
         p2m_read_lock(p2m);
         mfn = p2m_get_gfn_type_access(p2m, gfn, t, a, 0, NULL, 0);
-        if(is_reg_clear_magic()) {
-            p2m_read_unlock(p2m);
-            return NULL;
-        }
+
         if ( p2m_is_any_ram(*t) && mfn_valid(mfn)
              && !((q & P2M_UNSHARE) && p2m_is_shared(*t)) )
         {
