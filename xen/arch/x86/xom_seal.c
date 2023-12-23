@@ -450,7 +450,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     struct vcpu* v = current;
     struct domain * const d = v->domain;
     struct p2m_domain* p2m;
-    unsigned int token = hvmemul_cache_disable(v);
+    //unsigned int token = hvmemul_cache_disable(v);
 
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
@@ -476,7 +476,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
         ret = XOM_TYPE_PAGE;
 
 out:
-    hvmemul_cache_restore(v, token);
+    //hvmemul_cache_restore(v, token);
     return ret;
 }
 

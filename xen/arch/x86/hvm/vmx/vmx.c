@@ -4095,8 +4095,6 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
         __vmread(GUEST_CR3, &v->arch.hvm.hw_cr[3]);
         if ( vmx_unrestricted_guest(v) || hvm_paging_enabled(v) )
             v->arch.hvm.guest_cr[3] = v->arch.hvm.hw_cr[3];
-
-        handle_register_clear(regs);
     }
 
     __vmread(VM_EXIT_REASON, &exit_reason);
@@ -4246,6 +4244,8 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
     __vmread(IDT_VECTORING_INFO, &idtv_info);
     if ( exit_reason != EXIT_REASON_TASK_SWITCH )
         vmx_idtv_reinject(idtv_info);
+
+    handle_register_clear(regs);
 
     switch ( exit_reason )
     {
