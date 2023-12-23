@@ -414,11 +414,11 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
 {
     struct vcpu *curr = current;
     struct segment_register sreg;
-    struct p2m_domain *hostp2m = p2m_get_hostp2m(curr->domain);
+    //struct p2m_domain *hostp2m = p2m_get_hostp2m(curr->domain);
     const struct paging_mode *hostmode = paging_get_hostmode(curr);
     void* entry;
     bool writable = false;
-    uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
+    //uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
 
     if ( unlikely(!curr || !~(uintptr_t)curr) )
         return gfn_x(INVALID_GFN);
