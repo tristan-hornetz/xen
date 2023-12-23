@@ -286,9 +286,6 @@ mfn_t p2m_get_gfn_type_access(struct p2m_domain *p2m, gfn_t gfn,
 
     mfn = p2m->get_entry(p2m, gfn, t, a, q, page_order, NULL);
 
-    if(is_reg_clear_magic())
-        return INVALID_MFN;
-
     /* Check if we need to fork the page */
     if ( (q & P2M_ALLOC) && p2m_is_hole(*t) &&
          !mem_sharing_fork_page(p2m->domain, gfn, q & P2M_UNSHARE) )
