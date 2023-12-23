@@ -46,13 +46,9 @@ unsigned long cf_check hap_p2m_ga_to_gfn(GUEST_PAGING_LEVELS)(
 
     /* Get the top-level table's MFN */
     top_gfn = _gfn(cr3 >> PAGE_SHIFT);
-    if(is_reg_clear_magic()) {
-        return gfn_x(INVALID_GFN);
-    }
 
     top_page = p2m_get_page_from_gfn(p2m, top_gfn, &p2mt, NULL,
                                      P2M_ALLOC | P2M_UNSHARE);
-
 
     if ( p2m_is_paging(p2mt) )
     {

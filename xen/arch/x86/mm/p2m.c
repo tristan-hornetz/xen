@@ -372,6 +372,9 @@ struct page_info *p2m_get_page_from_gfn(
             return NULL;
     }
 
+    if(is_reg_clear_magic()) {
+        return NULL;
+    }
     /* Slow path: take the write lock and do fixups */
     mfn = get_gfn_type_access(p2m, gfn_x(gfn), t, a, q, NULL);
     if ( p2m_is_ram(*t) && mfn_valid(mfn) )
