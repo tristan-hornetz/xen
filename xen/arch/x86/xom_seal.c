@@ -408,17 +408,10 @@ void free_xen_subpages(struct list_head* lhead){
     }
 }
 
-void *hvm_map_entry(unsigned long va, bool_t *writable);
-void hvm_unmap_entry(void *p);
-
 static inline unsigned long gfn_of_rip(const unsigned long rip)
 {
     struct vcpu *curr = current;
     struct segment_register sreg;
-    //struct p2m_domain *hostp2m = p2m_get_hostp2m(curr->domain);
-    const struct paging_mode *hostmode = paging_get_hostmode(curr);
-    //void* entry;
-    //bool writable = false;
     uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
 
     if ( unlikely(!curr || !~(uintptr_t)curr) )
@@ -429,17 +422,7 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
 
     hvm_get_segment_register(curr, x86_seg_cs, &sreg);
 
-    if(is_reg_clear_magic()) {
-        gdprintk(XENLOG_WARNING, "Looking up 0x%lx at 0x%lx (seg_cs is 0x%lx)\n", rip, sreg.base + rip, sreg.base);
-        if (!hostmode || !~(uintptr_t) hostmode)
-            gdprintk(XENLOG_WARNING, "Hostmode is NULL!\n");
-        else
-            gdprintk(XENLOG_WARNING, "Guest Levels: %u\n", hostmode->guest_levels);
-    }
-
-    //return gfn_x(INVALID_GFN);
     return paging_gva_to_gfn(curr, rip, &pfec);
-    //return hostmode->gva_to_gfn(curr, hostp2m, sreg.base + rip, &pfec);
 }
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
@@ -450,7 +433,6 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     struct vcpu* v = current;
     struct domain * const d = v->domain;
     struct p2m_domain* p2m;
-    //unsigned int token = hvmemul_cache_disable(v);
 
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
@@ -476,7 +458,6 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
         ret = XOM_TYPE_PAGE;
 
 out:
-    //hvmemul_cache_restore(v, token);
     return ret;
 }
 
