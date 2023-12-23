@@ -13,6 +13,7 @@
 #include <asm/page.h>
 #include <asm/hvm/vmx/vmx.h>
 #include <asm/hvm/vmx/vmcs.h>
+#include <asm/hvm/emulate.h>
 #include "mm/mm-locks.h"
 
 
@@ -416,9 +417,9 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
     struct segment_register sreg;
     //struct p2m_domain *hostp2m = p2m_get_hostp2m(curr->domain);
     const struct paging_mode *hostmode = paging_get_hostmode(curr);
-    void* entry;
-    bool writable = false;
-    //uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
+    //void* entry;
+    //bool writable = false;
+    uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
 
     if ( unlikely(!curr || !~(uintptr_t)curr) )
         return gfn_x(INVALID_GFN);
@@ -434,35 +435,34 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
             gdprintk(XENLOG_WARNING, "Hostmode is NULL!\n");
         else
             gdprintk(XENLOG_WARNING, "Guest Levels: %u\n", hostmode->guest_levels);
-
-        entry = hvm_map_entry(rip, &writable);
-        hvm_unmap_entry(entry);
     }
 
-    return gfn_x(INVALID_GFN);
-    //paging_gva_to_gfn(struct vcpu *v, unsigned long va, uint32_t *pfec)
+    //return gfn_x(INVALID_GFN);
+    return paging_gva_to_gfn(curr, rip, &pfec);
     //return hostmode->gva_to_gfn(curr, hostp2m, sreg.base + rip, &pfec);
 }
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
-    unsigned char ret;
+    unsigned char ret = XOM_TYPE_NONE;
     p2m_type_t ptype = 0;
     p2m_access_t atype = 0;
     gfn_t instr_gfn;
-    const struct domain * const d = current->domain;
+    struct vcpu* v = current;
+    struct domain * const d = v->domain;
     struct p2m_domain* p2m;
+    unsigned int token = hvmemul_cache_disable(v);
 
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
-        return XOM_TYPE_NONE;
+        goto out;
 
     p2m = p2m_get_hostp2m(d);
 
     if ( unlikely(!p2m) )
-        return XOM_TYPE_NONE;
+        goto out;
 
     if ( unlikely(instr_gfn.gfn > p2m->max_mapped_pfn) )
-        return XOM_TYPE_NONE;
+        goto out;
 
     gfn_lock(p2m, instr_gfn, 0);
     p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
@@ -475,6 +475,8 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     else
         ret = XOM_TYPE_PAGE;
 
+out:
+    hvmemul_cache_restore(v, token);
     return ret;
 }
 
