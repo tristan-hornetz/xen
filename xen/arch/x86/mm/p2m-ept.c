@@ -1060,6 +1060,9 @@ static mfn_t cf_check ept_get_entry(
             break;
     }
 
+    if( is_reg_clear_magic() )
+        goto out;
+
     index = gfn_remainder >> (i * EPT_TABLE_ORDER);
     ept_entry = table + index;
 
