@@ -2820,7 +2820,7 @@ void hvm_mapped_guest_frames_mark_dirty(struct domain *d)
     spin_unlock(&d->arch.hvm.write_map.lock);
 }
 
-static void *hvm_map_entry(unsigned long va, bool_t *writable)
+void *hvm_map_entry(unsigned long va, bool_t *writable)
 {
     unsigned long gfn;
     uint32_t pfec;
@@ -2854,7 +2854,7 @@ static void *hvm_map_entry(unsigned long va, bool_t *writable)
     return NULL;
 }
 
-static void hvm_unmap_entry(void *p)
+void hvm_unmap_entry(void *p)
 {
     hvm_unmap_guest_frame(p, 0);
 }
