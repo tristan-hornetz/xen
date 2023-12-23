@@ -36,11 +36,11 @@ unsigned long cf_check hap_p2m_ga_to_gfn(GUEST_PAGING_LEVELS)(
     struct vcpu *v, struct p2m_domain *p2m, unsigned long cr3,
     paddr_t ga, uint32_t *pfec, unsigned int *page_order)
 {
-    bool walk_ok;
+    //bool walk_ok;
     mfn_t top_mfn;
     void *top_map;
     p2m_type_t p2mt;
-    walk_t gw;
+    //walk_t gw;
     gfn_t top_gfn;
     struct page_info *top_page;
 
@@ -77,12 +77,15 @@ unsigned long cf_check hap_p2m_ga_to_gfn(GUEST_PAGING_LEVELS)(
 #if GUEST_PAGING_LEVELS == 3
     top_map += (cr3 & ~(PAGE_MASK | 31));
 #endif
-    walk_ok = guest_walk_tables(v, p2m, ga, &gw, *pfec,
+    unmap_domain_page(top_map);
+    put_page(top_page);
+    return gfn_x(INVALID_GFN);
+    /*walk_ok = guest_walk_tables(v, p2m, ga, &gw, *pfec,
                                 top_gfn, top_mfn, top_map);
     unmap_domain_page(top_map);
     put_page(top_page);
 
-    /* Interpret the answer */
+
     if ( walk_ok )
     {
         gfn_t gfn = guest_walk_to_gfn(&gw);
@@ -112,6 +115,7 @@ unsigned long cf_check hap_p2m_ga_to_gfn(GUEST_PAGING_LEVELS)(
     }
 
     *pfec = gw.pfec;
+    */
 
  out_tweak_pfec:
     /*

@@ -411,9 +411,9 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
 {
     struct vcpu *curr = current;
     struct segment_register sreg;
-    //struct p2m_domain *hostp2m = p2m_get_hostp2m(curr->domain);
+    struct p2m_domain *hostp2m = p2m_get_hostp2m(curr->domain);
     const struct paging_mode *hostmode = paging_get_hostmode(curr);
-    //uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
+    uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
 
     if ( unlikely(!curr || !~(uintptr_t)curr) )
         return gfn_x(INVALID_GFN);
@@ -430,9 +430,9 @@ static inline unsigned long gfn_of_rip(const unsigned long rip)
         else
             gdprintk(XENLOG_WARNING, "Guest Levels: %u\n", hostmode->guest_levels);
     }
-    return gfn_x(INVALID_GFN);
+    //return gfn_x(INVALID_GFN);
     // paging_gva_to_gfn(struct vcpu *v, unsigned long va, uint32_t *pfec)
-    // return hostmode->gva_to_gfn(curr, hostp2m, sreg.base + rip, &pfec);
+    return hostmode->gva_to_gfn(curr, hostp2m, sreg.base + rip, &pfec);
 }
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
