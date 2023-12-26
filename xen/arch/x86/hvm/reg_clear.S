@@ -33,7 +33,6 @@ is_reg_clear_magic_exit:
 
 .globl clear_sse_regs
 clear_sse_regs:
-    clear_sse_regs:
     pxor   %xmm0, %xmm0
     pxor   %xmm1, %xmm1
     pxor   %xmm2, %xmm2
