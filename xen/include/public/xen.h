@@ -428,6 +428,8 @@ DEFINE_XEN_GUEST_HANDLE(xen_ulong_t);
 #define MMUEXT_UNMARK_XOM     22
 #define MMUEXT_CREATE_XOM_SPAGES 23
 #define MMUEXT_WRITE_XOM_SPAGES  24
+#define MMUEXT_DUMP_VMCS        25
+
 /* ` } */
 
 #ifndef __ASSEMBLY__

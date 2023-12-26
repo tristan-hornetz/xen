@@ -5,10 +5,15 @@
 #include <xen/list.h>
 #include <xen/xmalloc.h>
 #include <xen/guest_access.h>
+#include <xen/domain_page.h>
+#include <xen/xom_seal.h>
 #include <public/xen.h>
 #include <asm/p2m.h>
 #include <asm/event.h>
+#include <asm/page.h>
+#include <asm/hvm/vmx/vmx.h>
 #include <asm/hvm/vmx/vmcs.h>
+#include <asm/hvm/emulate.h>
 #include "mm/mm-locks.h"
 
 #define SUBPAGE_SIZE (PAGE_SIZE / (sizeof(uint32_t) << 3))
@@ -30,13 +35,14 @@ struct {
     xom_subpage_write_info write_info [MAX_SUBPAGES_PER_CMD];
 } typedef xom_subpage_write_command;
 
-static xom_subpage* get_subpage_info_entry(struct domain* d, gfn_t gfn){
-    struct list_head* lhead = &d->xom_subpages, *next = lhead->next, *last;
+
+static xom_subpage* get_subpage_info_entry(const struct domain* d, const gfn_t gfn){
+    const struct list_head* lhead = &d->xom_subpages;
+    struct list_head *next = lhead->next;
 
     while(next != lhead){
         if(((xom_subpage*)next)->gfn.gfn == gfn.gfn)
-            return ((xom_subpage*)next);
-        last = next;
+            return (xom_subpage*)next;
         next = next->next;
     }
     return NULL;
@@ -98,7 +104,8 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     if ( gfn.gfn + nr_pages > p2m->max_mapped_pfn )
         return -EOVERFLOW;
 
-    for ( i = 0; i < nr_pages; i++) {
+
+    for ( i = 0; i < nr_pages; i++ ) {
         c_gfn = _gfn(gfn.gfn + i);
 
         gfn_lock(p2m, c_gfn, 0);
@@ -275,8 +282,74 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     return 0;
 }
 
+/*
+static unsigned long vmr(const unsigned long field) {
+    unsigned long val;
+    enum vmx_insn_errno status;
+
+    vmx_vmcs_enter(current);
+    status = vmread_safe(field, &val);
+    vmx_vmcs_exit(current);
+    return status ? 0 : val;
+}*/
+
+// Locate VMCS, and copy into guest buffer
+static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
+    int rc;
+    void* dest_buffer, *vmcs;
+    struct page_info *page;
+    struct p2m_domain *p2m;
+
+    if ( !cpu_has_vmx )
+        return -EINVAL;
+
+    p2m = p2m_get_hostp2m(d);
+    vmcs = map_domain_page(_mfn(PFN_DOWN(current->arch.hvm.vmx.vmcs_pa)));
+
+    gdprintk(XENLOG_WARNING, "VMCS Dump: Found VMCS at physical address 0x%lx, mapped to 0x%lx\n",
+        current->arch.hvm.vmx.vmcs_pa, (unsigned long) vmcs);
+
+    if(!vmcs)
+        return -EINVAL;
+
+    gfn_lock(p2m, gfn_dest, 0);
+    page = get_page_from_gfn(d, gfn_dest.gfn, NULL, P2M_ALLOC);
+
+    if (!page) {
+        rc = -EINVAL;
+        gfn_unlock(p2m, gfn_dest, 0);
+        goto exit;
+    }
+
+    if (!get_page_type(page, PGT_writable_page)) {
+        put_page(page);
+        gfn_unlock(p2m, gfn_dest, 0);
+        rc = -EPERM;
+        goto exit;
+    }
+
+    // Copy VMCS into guest buffer
+    dest_buffer = __map_domain_page(page);
+
+    gdprintk(XENLOG_WARNING, "VMCS Dump: Mapped GFN 0x%lx to 0x%lx\n",
+         gfn_dest.gfn, (unsigned long) dest_buffer);
+
+    gdprintk(XENLOG_WARNING, "VMCS Dump: Mapped GFN 0x%lx to 0x%lx. VMCS[0]: 0x%lx, dest[0]: 0x%lx\n",
+         gfn_dest.gfn, (unsigned long) dest_buffer, *(unsigned long*)vmcs, *(unsigned long*)dest_buffer);
+
+    memcpy(dest_buffer, vmcs, PAGE_SIZE);
+    unmap_domain_page(dest_buffer);
+    put_page_and_type(page);
+    gfn_unlock(p2m, gfn_dest, 0);
+    
+    rc = 0;
+    exit:
+    unmap_domain_page(vmcs);
+    return rc;
+}
+
 int handle_xom_seal(struct vcpu* curr,
-        XEN_GUEST_HANDLE_PARAM(mmuext_op_t) uops, unsigned int count, XEN_GUEST_HANDLE_PARAM(uint) pdone) {
+                    XEN_GUEST_HANDLE_PARAM(mmuext_op_t) uops, unsigned int count, XEN_GUEST_HANDLE_PARAM(uint) pdone) {
     int rc;
     unsigned int i;
     struct domain* d = curr->domain;
@@ -309,6 +382,9 @@ int handle_xom_seal(struct vcpu* curr,
             case MMUEXT_WRITE_XOM_SPAGES:
                 rc = write_into_subpage(d, _gfn(op.arg1.mfn), _gfn(op.arg2.src_mfn));
                 break;
+            case MMUEXT_DUMP_VMCS:
+                rc = dump_vmcs(d, _gfn(op.arg1.mfn));
+                break;
             default:
                 rc = -EOPNOTSUPP;
         }
@@ -331,6 +407,59 @@ void free_xen_subpages(struct list_head* lhead){
         next = next->next;
         xfree(last);
     }
+}
+
+static inline unsigned long gfn_of_rip(const unsigned long rip)
+{
+    struct vcpu *curr = current;
+    struct segment_register sreg;
+    uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
+
+    if ( unlikely(!curr || !~(uintptr_t)curr) )
+        return gfn_x(INVALID_GFN);
+
+    if ( unlikely(!curr->is_initialised) )
+        return gfn_x(INVALID_GFN);
+
+    hvm_get_segment_register(curr, x86_seg_cs, &sreg);
+
+    return paging_gva_to_gfn(curr, rip, &pfec);
+}
+
+unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
+    unsigned char ret = XOM_TYPE_NONE;
+    p2m_type_t ptype = 0;
+    p2m_access_t atype = 0;
+    gfn_t instr_gfn;
+    struct vcpu* v = current;
+    struct domain * const d = v->domain;
+    struct p2m_domain* p2m;
+
+    instr_gfn = _gfn(gfn_of_rip(regs->rip));
+    if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
+        goto out;
+
+    p2m = p2m_get_hostp2m(d);
+
+    if ( unlikely(!p2m) )
+        goto out;
+
+    if ( unlikely(instr_gfn.gfn > p2m->max_mapped_pfn) )
+        goto out;
+
+    gfn_lock(p2m, instr_gfn, 0);
+    p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
+    gfn_unlock(p2m, instr_gfn, 0);
+
+    if (likely(atype != p2m_access_x))
+        ret = XOM_TYPE_NONE;
+    else if (get_subpage_info_entry(d, instr_gfn))
+        ret = XOM_TYPE_SUBPAGE;
+    else
+        ret = XOM_TYPE_PAGE;
+
+out:
+    return ret;
 }
 
 #endif // CONFIG_HVM

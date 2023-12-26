@@ -1915,6 +1915,7 @@ int hvm_hap_nested_page_fault(paddr_t gpa, unsigned long gla,
             if ( p2ma == p2m_access_x )
             {
                 gprintk(XENLOG_ERR, "Handle XOM access violation on gfn 0x%lx\n", gfn);
+
                 hvm_inject_hw_exception(X86_EXC_GP, 0);
                 rc = 1;
                 goto out_put_gfn;
@@ -2815,7 +2816,7 @@ void hvm_mapped_guest_frames_mark_dirty(struct domain *d)
     spin_unlock(&d->arch.hvm.write_map.lock);
 }
 
-static void *hvm_map_entry(unsigned long va, bool_t *writable)
+void *hvm_map_entry(unsigned long va, bool_t *writable)
 {
     unsigned long gfn;
     uint32_t pfec;
@@ -2849,7 +2850,7 @@ static void *hvm_map_entry(unsigned long va, bool_t *writable)
     return NULL;
 }
 
-static void hvm_unmap_entry(void *p)
+void hvm_unmap_entry(void *p)
 {
     hvm_unmap_guest_frame(p, 0);
 }

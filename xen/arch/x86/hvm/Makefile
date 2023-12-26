@@ -20,6 +20,7 @@ obj-y += mtrr.o
 obj-y += nestedhvm.o
 obj-y += pmtimer.o
 obj-y += quirks.o
+obj-bin-y += reg_clear.o
 obj-y += rtc.o
 obj-y += save.o
 obj-y += stdvga.o

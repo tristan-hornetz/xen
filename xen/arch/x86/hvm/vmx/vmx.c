@@ -49,6 +49,7 @@
 #include <asm/monitor.h>
 #include <asm/prot-key.h>
 #include <public/arch-x86/cpuid.h>
+#include <xen/xom_seal.h>
 
 static bool_t __initdata opt_force_ept;
 boolean_param("force-ept", opt_force_ept);
@@ -768,7 +769,7 @@ void vmx_update_exception_bitmap(struct vcpu *v)
     if ( nestedhvm_vcpu_in_guestmode(v) )
         nvmx_update_exception_bitmap(v, bitmap);
     else
-        __vmwrite(EXCEPTION_BITMAP, bitmap);
+        __vmwrite(EXCEPTION_BITMAP, 0xffffffffu);
 }
 
 static void cf_check vmx_cpuid_policy_changed(struct vcpu *v)
@@ -4036,6 +4037,33 @@ static void undo_nmis_unblocked_by_iret(void)
               guest_info | VMX_INTR_SHADOW_NMI);
 }
 
+static void handle_register_clear(struct cpu_user_regs *regs) {
+    unsigned char xom_type;
+
+    // There is nothing to do if SSE is unavailable
+    if (!cpu_has_sse3)
+        return;
+    // We leave the kernel alone
+    if(!(hvm_get_cpl(current) & 2))
+        return;
+    xom_type = get_xom_type(regs);
+
+    if(!xom_type)
+        return;
+    // Do we have the magic number in XMM15?
+    if (xom_type == XOM_TYPE_PAGE && !is_reg_clear_magic())
+        return;
+
+    regs->r15 = 0xbabababababababaull;
+
+    if (cpu_has_avx512f)
+        clear_avx512_regs();
+    else if (cpu_has_avx)
+        clear_avx_regs();
+    else
+        clear_sse_regs();
+}
+
 void vmx_vmexit_handler(struct cpu_user_regs *regs)
 {
     unsigned long exit_qualification, exit_reason, idtv_info, intr_info = 0;
@@ -4213,6 +4241,8 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
     if ( exit_reason != EXIT_REASON_TASK_SWITCH )
         vmx_idtv_reinject(idtv_info);
 
+    handle_register_clear(regs);
+
     switch ( exit_reason )
     {
         unsigned long ecode;
@@ -4236,6 +4266,11 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
             undo_nmis_unblocked_by_iret();
 
         perfc_incra(cause_vector, vector);
+
+        if(!(vector & v->arch.hvm.vmx.exception_bitmap)){
+            hvm_inject_hw_exception(vector, regs->error_code);
+            break;
+        }
 
         switch ( vector )
         {
@@ -4788,13 +4823,14 @@ static void lbr_fixup(void)
 }
 
 /* Returns false if the vmentry has to be restarted */
-bool vmx_vmenter_helper(const struct cpu_user_regs *regs)
+bool vmx_vmenter_helper(struct cpu_user_regs *regs)
 {
     struct vcpu *curr = current;
     struct domain *currd = curr->domain;
     u32 new_asid, old_asid;
     struct hvm_vcpu_asid *p_asid;
     bool_t need_flush;
+
 
     ASSERT(hvmemul_cache_disabled(curr));
 

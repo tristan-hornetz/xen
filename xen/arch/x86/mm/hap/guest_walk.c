@@ -46,8 +46,10 @@ unsigned long cf_check hap_p2m_ga_to_gfn(GUEST_PAGING_LEVELS)(
 
     /* Get the top-level table's MFN */
     top_gfn = _gfn(cr3 >> PAGE_SHIFT);
+
     top_page = p2m_get_page_from_gfn(p2m, top_gfn, &p2mt, NULL,
                                      P2M_ALLOC | P2M_UNSHARE);
+
     if ( p2m_is_paging(p2mt) )
     {
         ASSERT(p2m_is_hostp2m(p2m));
@@ -77,12 +79,13 @@ unsigned long cf_check hap_p2m_ga_to_gfn(GUEST_PAGING_LEVELS)(
 #if GUEST_PAGING_LEVELS == 3
     top_map += (cr3 & ~(PAGE_MASK | 31));
 #endif
+
     walk_ok = guest_walk_tables(v, p2m, ga, &gw, *pfec,
                                 top_gfn, top_mfn, top_map);
     unmap_domain_page(top_map);
     put_page(top_page);
 
-    /* Interpret the answer */
+
     if ( walk_ok )
     {
         gfn_t gfn = guest_walk_to_gfn(&gw);

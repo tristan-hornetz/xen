@@ -26,6 +26,11 @@ extern bool_t opt_hvm_fep;
 #define opt_hvm_fep 0
 #endif
 
+bool is_reg_clear_magic(void);
+void clear_sse_regs(void);
+void clear_avx_regs(void);
+void clear_avx512_regs(void);
+
 /* Interrupt acknowledgement sources. */
 enum hvm_intsrc {
     hvm_intsrc_none,

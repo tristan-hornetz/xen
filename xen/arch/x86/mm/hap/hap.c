@@ -682,11 +682,12 @@ void hap_vcpu_init(struct vcpu *v)
 static int cf_check hap_page_fault(
     struct vcpu *v, unsigned long va, struct cpu_user_regs *regs)
 {
-    struct domain *d = v->domain;
+    return 0;
+    /*struct domain *d = v->domain;
 
     printk(XENLOG_G_ERR "Intercepted #PF from %pv with HAP enabled\n", v);
     domain_crash(d);
-    return 0;
+    return 0;*/
 }
 
 /*
