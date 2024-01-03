@@ -411,7 +411,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     gfn_t instr_gfn;
     struct vcpu* v = current;
     struct domain * const d = v->domain;
-    struct p2m_domain* p2m;
+    // struct p2m_domain* p2m;
 
     if(!regs || !~(uintptr_t)regs)
         return ret;
@@ -421,7 +421,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
         goto out;
 
-    p2m = p2m_get_hostp2m(d);
+    /*p2m = p2m_get_hostp2m(d);
 
     if ( unlikely(!p2m) )
         goto out;
@@ -429,7 +429,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if ( unlikely(instr_gfn.gfn > p2m->max_mapped_pfn) )
         goto out;
 
-    /*gfn_lock(p2m, instr_gfn, 0);
+    gfn_lock(p2m, instr_gfn, 0);
     p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
     gfn_unlock(p2m, instr_gfn, 0);
 
