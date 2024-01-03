@@ -602,6 +602,7 @@ struct domain
     } ioreq_server;
 #endif
 #ifdef CONFIG_HVM
+    spinlock_t subpage_lock;
     struct list_head xom_subpages;
 #endif
 

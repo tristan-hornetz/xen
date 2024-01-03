@@ -346,6 +346,7 @@ int handle_xom_seal(struct vcpu* curr,
             return -EFAULT;
         }
 
+        spin_lock(&d->subpage_lock);
         switch (op.cmd){
             case MMUEXT_MARK_XOM:
                 rc = set_xom_seal(d, _gfn(op.arg1.mfn), op.arg2.nr_ents);
@@ -365,6 +366,7 @@ int handle_xom_seal(struct vcpu* curr,
             default:
                 rc = -EOPNOTSUPP;
         }
+        spin_unlock(&d->subpage_lock);
 
         guest_handle_add_offset(uops, 1);
         if (rc < 0)
@@ -411,6 +413,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     struct domain * const d = v->domain;
     struct p2m_domain* p2m;
 
+    spin_lock(&d->subpage_lock);
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
         goto out;
@@ -436,6 +439,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
         ret = XOM_TYPE_PAGE;
 
 out:
+    spin_unlock(&d->subpage_lock);
     return ret;
 }
 

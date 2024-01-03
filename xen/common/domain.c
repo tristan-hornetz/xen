@@ -638,6 +638,7 @@ struct domain *domain_create(domid_t domid,
     INIT_PAGE_LIST_HEAD(&d->resv_page_list);
 #endif
 #ifdef CONFIG_HVM
+    spin_lock_init(&d->subpage_lock);
     INIT_LIST_HEAD(&d->xom_subpages);
 #endif
 
