@@ -375,7 +375,7 @@ int handle_xom_seal(struct vcpu* curr,
     return 0;
 }
 
-void free_xom_subpages(struct list_head* lhead){
+void free_xom_subpages(struct list_head* lhead) {
     struct list_head* next = lhead->next, *last;
 
     while(next != lhead){
@@ -385,8 +385,7 @@ void free_xom_subpages(struct list_head* lhead){
     }
 }
 
-static inline unsigned long gfn_of_rip(const unsigned long rip)
-{
+static inline unsigned long gfn_of_rip(const unsigned long rip) {
     struct vcpu *curr = current;
     struct segment_register sreg;
     uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
