@@ -1178,7 +1178,7 @@ static void cf_check complete_domain_destroy(struct rcu_head *head)
     xfree(d->vm_event_share);
 #endif
 #if CONFIG_HVM
-    free_xen_subpages(&d->xom_subpages);
+    free_xom_subpages(&d->xom_subpages);
 #endif
 
     for ( i = d->max_vcpus - 1; i >= 0; i-- )

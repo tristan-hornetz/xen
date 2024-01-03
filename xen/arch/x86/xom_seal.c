@@ -282,70 +282,46 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     return 0;
 }
 
-/*
-static unsigned long vmr(const unsigned long field) {
-    unsigned long val;
-    enum vmx_insn_errno status;
-
-    vmx_vmcs_enter(current);
-    status = vmread_safe(field, &val);
-    vmx_vmcs_exit(current);
-    return status ? 0 : val;
-}*/
-
-// Locate VMCS, and copy into guest buffer
-static int dump_vmcs(struct domain* d, gfn_t gfn_dest) {
-    int rc;
-    void* dest_buffer, *vmcs;
-    struct page_info *page;
+static int map_secret_page_to_guest(struct domain* d, gfn_t gfn_dest) {
+    int status;
+    char* xom_page;
     struct p2m_domain *p2m;
+    struct page_info *page;
+    xom_subpage* subpage_info;
 
-    if ( !cpu_has_vmx )
+    status = create_xom_subpages(d, gfn_dest, 1);
+    if ( status < 0 )
+        return status;
+
+    subpage_info = get_subpage_info_entry(d, gfn_dest);
+    if(!subpage_info)
         return -EINVAL;
 
     p2m = p2m_get_hostp2m(d);
-    vmcs = map_domain_page(_mfn(PFN_DOWN(current->arch.hvm.vmx.vmcs_pa)));
-
-    gdprintk(XENLOG_WARNING, "VMCS Dump: Found VMCS at physical address 0x%lx, mapped to 0x%lx\n",
-        current->arch.hvm.vmx.vmcs_pa, (unsigned long) vmcs);
-
-    if(!vmcs)
-        return -EINVAL;
 
     gfn_lock(p2m, gfn_dest, 0);
     page = get_page_from_gfn(d, gfn_dest.gfn, NULL, P2M_ALLOC);
-
-    if (!page) {
-        rc = -EINVAL;
+    if(!page){
         gfn_unlock(p2m, gfn_dest, 0);
-        goto exit;
+        return -EINVAL;
     }
-
     if (!get_page_type(page, PGT_writable_page)) {
         put_page(page);
         gfn_unlock(p2m, gfn_dest, 0);
-        rc = -EPERM;
-        goto exit;
+        return -EPERM;
     }
+    xom_page = (char*) __map_domain_page(page);
 
-    // Copy VMCS into guest buffer
-    dest_buffer = __map_domain_page(page);
+    // Copy code for AES
+    memcpy(xom_page, aes_gctr_linear, PAGE_SIZE);
+    subpage_info->lock_status = ~0u;
 
-    gdprintk(XENLOG_WARNING, "VMCS Dump: Mapped GFN 0x%lx to 0x%lx\n",
-         gfn_dest.gfn, (unsigned long) dest_buffer);
-
-    gdprintk(XENLOG_WARNING, "VMCS Dump: Mapped GFN 0x%lx to 0x%lx. VMCS[0]: 0x%lx, dest[0]: 0x%lx\n",
-         gfn_dest.gfn, (unsigned long) dest_buffer, *(unsigned long*)vmcs, *(unsigned long*)dest_buffer);
-
-    memcpy(dest_buffer, vmcs, PAGE_SIZE);
-    unmap_domain_page(dest_buffer);
-    put_page_and_type(page);
+    // Cleanup
+    unmap_domain_page(xom_page);
     gfn_unlock(p2m, gfn_dest, 0);
-    
-    rc = 0;
-    exit:
-    unmap_domain_page(vmcs);
-    return rc;
+    put_page_and_type(page);
+
+    return 0;
 }
 
 int handle_xom_seal(struct vcpu* curr,
@@ -382,8 +358,8 @@ int handle_xom_seal(struct vcpu* curr,
             case MMUEXT_WRITE_XOM_SPAGES:
                 rc = write_into_subpage(d, _gfn(op.arg1.mfn), _gfn(op.arg2.src_mfn));
                 break;
-            case MMUEXT_DUMP_VMCS:
-                rc = dump_vmcs(d, _gfn(op.arg1.mfn));
+            case MMUEXT_GET_SECRET_PAGE:
+                rc = map_secret_page_to_guest(d, _gfn(op.arg1.mfn));
                 break;
             default:
                 rc = -EOPNOTSUPP;
@@ -399,7 +375,7 @@ int handle_xom_seal(struct vcpu* curr,
     return 0;
 }
 
-void free_xen_subpages(struct list_head* lhead){
+void free_xom_subpages(struct list_head* lhead){
     struct list_head* next = lhead->next, *last;
 
     while(next != lhead){
@@ -451,7 +427,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
     gfn_unlock(p2m, instr_gfn, 0);
 
-    if (likely(atype != p2m_access_x))
+    if ( likely(atype != p2m_access_x) )
         ret = XOM_TYPE_NONE;
     else if (get_subpage_info_entry(d, instr_gfn))
         ret = XOM_TYPE_SUBPAGE;
