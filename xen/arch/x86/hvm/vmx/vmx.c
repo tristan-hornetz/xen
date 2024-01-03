@@ -4058,11 +4058,11 @@ static void handle_register_clear(struct cpu_user_regs *regs) {
 
     regs->r15 = 0xbabababababababaull;
 
-    if (cpu_has_avx512f)
-        clear_avx512_regs();
+    /* if (cpu_has_avx512f)
+         clear_avx512_regs();
     else if (cpu_has_avx)
         clear_avx_regs();
-    else
+    else*/
         clear_sse_regs();
 }
 
