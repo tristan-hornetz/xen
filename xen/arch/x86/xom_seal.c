@@ -401,7 +401,7 @@ static inline unsigned long gfn_of_rip(const unsigned long rip) {
 
     hvm_get_segment_register(curr, x86_seg_cs, &sreg);
 
-    return paging_gva_to_gfn(curr, rip, &pfec);
+    return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
 }
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
@@ -412,6 +412,9 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     struct vcpu* v = current;
     struct domain * const d = v->domain;
     struct p2m_domain* p2m;
+
+    if(!regs || !~(uintptr_t)regs)
+        return ret;
 
     spin_lock(&d->subpage_lock);
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
@@ -431,7 +434,6 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     gfn_unlock(p2m, instr_gfn, 0);
 
     if ( likely(atype != p2m_access_x) )
-
         ret = XOM_TYPE_NONE;
     else if (get_subpage_info_entry(d, instr_gfn))
         ret = XOM_TYPE_SUBPAGE;
