@@ -41,7 +41,7 @@ static xom_subpage* get_subpage_info_entry(const struct domain* d, const gfn_t g
     const struct list_head* lhead = &d->xom_subpages;
     struct list_head *next = lhead->next;
 
-    while(next != lhead){
+    while(next && next != lhead){
         if(((xom_subpage*)next)->gfn.gfn == gfn.gfn)
             return (xom_subpage*)next;
         next = next->next;
@@ -438,7 +438,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     else*/ if (get_subpage_info_entry(d, instr_gfn))
         ret = XOM_TYPE_SUBPAGE;
     else
-        ret = XOM_TYPE_PAGE;
+        ret = XOM_TYPE_NONE;
 
 out:
     spin_unlock(&d->subpage_lock);
