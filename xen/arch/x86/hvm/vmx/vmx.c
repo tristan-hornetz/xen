@@ -4048,13 +4048,14 @@ static void handle_register_clear(struct cpu_user_regs *regs) {
         return;
     xom_type = get_xom_type(regs);
 
-    if(!xom_type)
+    if(xom_type == XOM_TYPE_NONE)
         return;
 
     // Do we have the magic number in XMM15?
-    if (xom_type == XOM_TYPE_PAGE)
+    /*if (xom_type == XOM_TYPE_PAGE)
         if(!is_reg_clear_magic())
             return;
+    */
 
     regs->r15 = 0xbabababababababaull;
 

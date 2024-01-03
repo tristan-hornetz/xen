@@ -37,6 +37,7 @@ struct {
 } typedef xom_subpage_write_command;
 
 
+// TODO: Replace with rbtree at some point to improve performance
 static xom_subpage* get_subpage_info_entry(const struct domain* d, const gfn_t gfn){
     const struct list_head* lhead = &d->xom_subpages;
     struct list_head *next = lhead->next;
@@ -406,12 +407,9 @@ static inline unsigned long gfn_of_rip(const unsigned long rip) {
 
 unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     unsigned char ret = XOM_TYPE_NONE;
-    //p2m_type_t ptype = 0;
-    //p2m_access_t atype = 0;
     gfn_t instr_gfn;
     struct vcpu* v = current;
     struct domain * const d = v->domain;
-    // struct p2m_domain* p2m;
 
     if(!regs || !~(uintptr_t)regs)
         return ret;
@@ -421,24 +419,7 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
         goto out;
 
-    /*p2m = p2m_get_hostp2m(d);
-
-    if ( unlikely(!p2m) )
-        goto out;
-
-    if ( unlikely(instr_gfn.gfn > p2m->max_mapped_pfn) )
-        goto out;
-
-    gfn_lock(p2m, instr_gfn, 0);
-    p2m->get_entry(p2m, instr_gfn, &ptype, &atype, 0, NULL, NULL);
-    gfn_unlock(p2m, instr_gfn, 0);
-
-    if ( likely(atype != p2m_access_x) )
-        ret = XOM_TYPE_NONE;
-    else*/ if (get_subpage_info_entry(d, instr_gfn))
-        ret = XOM_TYPE_SUBPAGE;
-    else
-        ret = XOM_TYPE_NONE;
+    ret = get_subpage_info_entry(d, instr_gfn) ? XOM_TYPE_SUBPAGE : XOM_TYPE_NONE;
 
 out:
     spin_unlock(&d->subpage_lock);
