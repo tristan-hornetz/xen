@@ -339,6 +339,11 @@ static int mark_reg_clear_page(struct domain* d, gfn_t gfn, unsigned int reg_cle
     if(!reg_clear_type || reg_clear_type > REG_CLEAR_TYPE_FULL)
         return -EINVAL;
 
+    // A page cannot be marked twice
+    page_info = get_page_info_entry(&d->xom_reg_clear_pages, gfn);
+    if(page_info)
+        return -EINVAL;
+
     // We only allow marking XOM pages
     p2m = p2m_get_hostp2m(d);
     gfn_lock(p2m, c_gfn, 0);
