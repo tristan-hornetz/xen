@@ -4280,7 +4280,7 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
         perfc_incra(cause_vector, vector);
 
         if(!(vector & v->arch.hvm.vmx.exception_bitmap)){
-            hvm_inject_hw_exception(vector, regs->error_code);
+            vmx_propagate_intr(intr_info);
             break;
         }
 
