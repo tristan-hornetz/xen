@@ -602,8 +602,9 @@ struct domain
     } ioreq_server;
 #endif
 #ifdef CONFIG_HVM
-    spinlock_t subpage_lock;
+    spinlock_t xom_page_lock;
     struct list_head xom_subpages;
+    struct list_head xom_reg_clear_pages;
 #endif
 
     /* Holding CDF_* constant. Internal flags for domain creation. */

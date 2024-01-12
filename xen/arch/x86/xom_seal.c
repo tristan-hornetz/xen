@@ -16,15 +16,17 @@
 #include <asm/hvm/emulate.h>
 #include "mm/mm-locks.h"
 
-
 #define SUBPAGE_SIZE (PAGE_SIZE / (sizeof(uint32_t) << 3))
 #define MAX_SUBPAGES_PER_CMD ((PAGE_SIZE - sizeof(uint8_t)) / (sizeof(xom_subpage_write_info)))
 
 struct {
     struct list_head lhead;
     gfn_t gfn;
-    uint32_t lock_status;
-} typedef xom_subpage;
+    union {
+        uint32_t lock_status;
+        uint8_t reg_clear_type;
+    } info;
+} typedef xom_page_info;
 
 struct {
     uint8_t target_subpage;
@@ -38,13 +40,12 @@ struct {
 
 
 // TODO: Replace with rbtree at some point to improve performance
-static xom_subpage* get_subpage_info_entry(const struct domain* d, const gfn_t gfn){
-    const struct list_head* lhead = &d->xom_subpages;
-    struct list_head *next = lhead->next;
+static xom_page_info* get_page_info_entry(const struct list_head* const lhead, const gfn_t gfn){
+    const struct list_head* next = lhead->next;
 
     while(next && next != lhead){
-        if(((xom_subpage*)next)->gfn.gfn == gfn.gfn)
-            return (xom_subpage*)next;
+        if(((xom_page_info*)next)->gfn.gfn == gfn.gfn)
+            return (xom_page_info*)next;
         next = next->next;
     }
     return NULL;
@@ -88,7 +89,7 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     void* xom_page;
     struct p2m_domain *p2m;
     struct page_info *page;
-    xom_subpage* subpage_info;
+    xom_page_info* page_info;
     p2m_type_t ptype;
     p2m_access_t atype;
     gfn_t c_gfn;
@@ -144,10 +145,15 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_rwx, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
 
-        subpage_info = get_subpage_info_entry(d, gfn);
-        if(subpage_info){
-            list_del(&subpage_info->lhead);
-            xfree(subpage_info);
+        page_info = get_page_info_entry(&d->xom_subpages, gfn);
+        if(page_info){
+            list_del(&page_info->lhead);
+            xfree(page_info);
+        }
+        page_info = get_page_info_entry(&d->xom_reg_clear_pages, gfn);
+        if (page_info) {
+            list_del(&page_info->lhead);
+            xfree(page_info);
         }
     }
 
@@ -160,7 +166,7 @@ static int create_xom_subpages(struct domain* d, gfn_t gfn, unsigned int nr_page
     int ret = 0;
     unsigned int i;
     struct p2m_domain *p2m;
-    xom_subpage* subpage_info = NULL;
+    xom_page_info* subpage_info = NULL;
     p2m_type_t ptype;
     p2m_access_t atype;
     gfn_t c_gfn;
@@ -181,11 +187,9 @@ static int create_xom_subpages(struct domain* d, gfn_t gfn, unsigned int nr_page
     for ( i = 0; i < nr_pages; i++) {
         c_gfn = _gfn(gfn.gfn + i);
 
-        if(!subpage_info){
-            subpage_info = xmalloc(xom_subpage);
-            if(!subpage_info)
-                return -ENOMEM;
-        }
+        subpage_info = xmalloc(xom_page_info);
+        if(!subpage_info)
+            return -ENOMEM;
 
         memset(subpage_info, 0, sizeof(*subpage_info));
 
@@ -219,10 +223,10 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     char* xom_page, *write_dest;
     struct p2m_domain *p2m;
     struct page_info *page;
-    xom_subpage* subpage_info;
+    xom_page_info* subpage_info;
     xom_subpage_write_command command;
 
-    subpage_info = get_subpage_info_entry(d, gfn_dest);
+    subpage_info = get_page_info_entry(&d->xom_subpages, gfn_dest);
     if(!subpage_info)
         return -EINVAL;
 
@@ -255,7 +259,7 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     for(i = 0; i < command.num_subpages; i++){
         if(command.write_info[i].target_subpage >= (PAGE_SIZE / SUBPAGE_SIZE))
             return -EINVAL;
-        if(subpage_info->lock_status & (1 << command.write_info[i].target_subpage))
+        if(subpage_info->info.lock_status & (1 << command.write_info[i].target_subpage))
             return -EINVAL;
     }
 
@@ -275,7 +279,7 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     for(i = 0; i < command.num_subpages; i++){
         write_dest = xom_page + (command.write_info[i].target_subpage * SUBPAGE_SIZE);
         memcpy(write_dest, command.write_info[i].data, SUBPAGE_SIZE);
-        subpage_info->lock_status |= 1 << command.write_info[i].target_subpage;
+        subpage_info->info.lock_status |= 1 << command.write_info[i].target_subpage;
     }
     unmap_domain_page(xom_page);
     gfn_unlock(p2m, gfn_dest, 0);
@@ -289,13 +293,13 @@ static int map_secret_page_to_guest(struct domain* d, gfn_t gfn_dest) {
     char* xom_page;
     struct p2m_domain *p2m;
     struct page_info *page;
-    xom_subpage* subpage_info;
+    xom_page_info* subpage_info;
 
     status = create_xom_subpages(d, gfn_dest, 1);
     if ( status < 0 )
         return status;
 
-    subpage_info = get_subpage_info_entry(d, gfn_dest);
+    subpage_info = get_page_info_entry(&d->xom_subpages, gfn_dest);
     if(!subpage_info)
         return -EINVAL;
 
@@ -316,12 +320,43 @@ static int map_secret_page_to_guest(struct domain* d, gfn_t gfn_dest) {
 
     // Copy code for AES
     memcpy(xom_page, aes_gctr_linear, PAGE_SIZE);
-    subpage_info->lock_status = ~0u;
+    subpage_info->info.lock_status = ~0u;
 
     // Cleanup
     unmap_domain_page(xom_page);
     gfn_unlock(p2m, gfn_dest, 0);
     put_page_and_type(page);
+
+    return 0;
+}
+
+static int mark_reg_clear_page(struct domain* d, gfn_t gfn, unsigned int reg_clear_type) {
+    xom_page_info* page_info;
+    struct p2m_domain *p2m;
+    p2m_type_t ptype;
+    p2m_access_t atype;
+
+    if(!reg_clear_type || reg_clear_type > REG_CLEAR_TYPE_FULL)
+        return -EINVAL;
+
+    // We only allow marking XOM pages
+    p2m = p2m_get_hostp2m(d);
+    gfn_lock(p2m, c_gfn, 0);
+    p2m->get_entry(p2m, gfn, &ptype, &atype, 0, NULL, NULL);
+    gfn_unlock(p2m, c_gfn, 0);
+    if (atype != p2m_access_x)
+        return -EINVAL;
+
+    page_info = xmalloc(xom_page_info);
+    if(!page_info)
+        return -ENOMEM;
+
+    *page_info = (xom_page_info) {
+        .gfn = gfn,
+        .info = {.reg_clear_type = reg_clear_type}
+    };
+
+    list_add(&page_info->lhead, &d->xom_reg_clear_pages);
 
     return 0;
 }
@@ -347,7 +382,7 @@ int handle_xom_seal(struct vcpu* curr,
             return -EFAULT;
         }
 
-        spin_lock(&d->subpage_lock);
+        spin_lock(&d->xom_page_lock);
         switch (op.cmd){
             case MMUEXT_MARK_XOM:
                 rc = set_xom_seal(d, _gfn(op.arg1.mfn), op.arg2.nr_ents);
@@ -364,10 +399,13 @@ int handle_xom_seal(struct vcpu* curr,
             case MMUEXT_GET_SECRET_PAGE:
                 rc = map_secret_page_to_guest(d, _gfn(op.arg1.mfn));
                 break;
+            case MMUEXT_MARK_REG_CLEAR:
+                rc =  mark_reg_clear_page(d, _gfn(op.arg1.mfn), op.arg2.nr_ents);
+                break;
             default:
                 rc = -EOPNOTSUPP;
         }
-        spin_unlock(&d->subpage_lock);
+        spin_unlock(&d->xom_page_lock);
 
         guest_handle_add_offset(uops, 1);
         if (rc < 0)
@@ -379,7 +417,7 @@ int handle_xom_seal(struct vcpu* curr,
     return 0;
 }
 
-void free_xom_subpages(struct list_head* lhead) {
+void free_xom_llist(struct list_head* lhead) {
     struct list_head* next = lhead->next, *last;
 
     while(next != lhead){
@@ -405,8 +443,9 @@ static inline unsigned long gfn_of_rip(const unsigned long rip) {
     return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
 }
 
-unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
-    unsigned char ret = XOM_TYPE_NONE;
+unsigned char get_reg_clear_type(const struct cpu_user_regs* const regs) {
+    unsigned char ret = REG_CLEAR_TYPE_NONE;
+    xom_page_info* info;
     gfn_t instr_gfn;
     struct vcpu* v = current;
     struct domain * const d = v->domain;
@@ -414,19 +453,23 @@ unsigned char get_xom_type(const struct cpu_user_regs* const regs) {
     if(!regs || !~(uintptr_t)regs)
         return ret;
 
-    spin_lock(&d->subpage_lock);
+    spin_lock(&d->xom_page_lock);
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
         goto out;
 
-    ret = get_subpage_info_entry(d, instr_gfn) ? XOM_TYPE_SUBPAGE : XOM_TYPE_NONE;
+    info = get_page_info_entry(&d->xom_reg_clear_pages, instr_gfn);
+    if(!info)
+        goto out;
 
+    ret = info->info.reg_clear_type;
 out:
-    spin_unlock(&d->subpage_lock);
+    spin_unlock(&d->xom_page_lock);
     return ret;
 }
 
 #endif // CONFIG_HVM
+
 /*
  * Local variables:
  * mode: C
@@ -435,4 +478,3 @@ out:
  * indent-tabs-mode: nil
  * End:
  */
-

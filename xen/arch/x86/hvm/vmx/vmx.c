@@ -4038,33 +4038,42 @@ static void undo_nmis_unblocked_by_iret(void)
 }
 
 static void handle_register_clear(struct cpu_user_regs *regs) {
-    unsigned char xom_type;
+    unsigned char reg_clear_type;
+    struct {
+        uintptr_t sp;
+        uintptr_t bp;
+    } reg_backup;
 
-    // There is nothing to do if SSE is unavailable
-    if (!cpu_has_sse3)
-        return;
     // We leave the kernel alone
     if(!(hvm_get_cpl(current) & 2))
         return;
-    xom_type = get_xom_type(regs);
+    reg_clear_type = get_reg_clear_type(regs);
 
-    if(xom_type == XOM_TYPE_NONE)
+    if(reg_clear_type == REG_CLEAR_TYPE_NONE)
         return;
-
-    // Do we have the magic number in XMM15?
-    /*if (xom_type == XOM_TYPE_PAGE)
-        if(!is_reg_clear_magic())
-            return;
-    */
-
-    regs->r15 = 0xbabababababababaull;
 
     if (cpu_has_avx512f)
          clear_avx512_regs();
     else if (cpu_has_avx)
         clear_avx_regs();
-    else
+    else if (cpu_has_sse3)
         clear_sse_regs();
+
+    if(reg_clear_type == REG_CLEAR_TYPE_VECTOR) {
+        regs->r15 = 0xbabababababababaull;
+        asm volatile ("sfence");
+        return;
+    }
+
+    reg_backup.sp = regs->rsp;
+    reg_backup.bp = regs->rbp;
+
+    memset(regs, 0, sizeof(*regs));
+    regs->rsp = reg_backup.sp;
+    regs->rbp = reg_backup.bp;
+    regs->r15 = 0xdadadadadadadadaull;
+
+    asm volatile ("sfence");
 }
 
 void vmx_vmexit_handler(struct cpu_user_regs *regs)

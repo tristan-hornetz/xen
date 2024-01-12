@@ -638,8 +638,9 @@ struct domain *domain_create(domid_t domid,
     INIT_PAGE_LIST_HEAD(&d->resv_page_list);
 #endif
 #ifdef CONFIG_HVM
-    spin_lock_init(&d->subpage_lock);
+    spin_lock_init(&d->xom_page_lock);
     INIT_LIST_HEAD(&d->xom_subpages);
+    INIT_LIST_HEAD(&d->xom_reg_clear_pages);
 #endif
 
 
@@ -1179,7 +1180,8 @@ static void cf_check complete_domain_destroy(struct rcu_head *head)
     xfree(d->vm_event_share);
 #endif
 #if CONFIG_HVM
-    free_xom_subpages(&d->xom_subpages);
+    free_xom_llist(&d->xom_subpages);
+    free_xom_llist(&d->xom_reg_clear_pages);
 #endif
 
     for ( i = d->max_vcpus - 1; i >= 0; i-- )
