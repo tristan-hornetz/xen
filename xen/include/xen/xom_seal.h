@@ -25,7 +25,7 @@ static inline int handle_xom_seal (struct vcpu* curr,
 }
 
 static inline void free_xom_llist(struct list_head* lhead) {(void)lhead;}
-static inline unsigned char get_reg_clear_type(const struct cpu_user_regs* regs) {(void) regs; return XOM_TYPE_NONE;}
+static inline unsigned char get_reg_clear_type(const struct cpu_user_regs* regs) {(void) regs; return REG_CLEAR_TYPE_NONE;}
 
 #endif
 
