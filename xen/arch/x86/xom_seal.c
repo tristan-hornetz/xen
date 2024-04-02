@@ -11,9 +11,6 @@
 #include <asm/p2m.h>
 #include <asm/event.h>
 #include <asm/page.h>
-#include <asm/hvm/vmx/vmx.h>
-#include <asm/hvm/vmx/vmcs.h>
-#include <asm/hvm/emulate.h>
 #include "mm/mm-locks.h"
 
 #define SUBPAGE_SIZE (PAGE_SIZE / (sizeof(uint32_t) << 3))
