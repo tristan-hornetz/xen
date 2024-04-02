@@ -36,13 +36,14 @@
  * caller in schedule_work.
  */
 static DEFINE_SPINLOCK(payload_lock);
+/*
+ * Need RCU in case we crash (and then traps code would iterate via
+ * payload_list) when adding entries on the list.
+ */
+static DEFINE_RCU_READ_LOCK(rcu_payload_lock);
 static LIST_HEAD(payload_list);
 
-/*
- * Patches which have been applied. Need RCU in case we crash (and then
- * traps code would iterate via applied_list) when adding entries on the list.
- */
-static DEFINE_RCU_READ_LOCK(rcu_applied_lock);
+/* Patches which have been applied. Only modified from stop machine context. */
 static LIST_HEAD(applied_list);
 
 static unsigned int payload_cnt;
@@ -111,12 +112,8 @@ bool_t is_patch(const void *ptr)
     const struct payload *data;
     bool_t r = 0;
 
-    /*
-     * Only RCU locking since this list is only ever changed during apply
-     * or revert context. And in case it dies there we need an safe list.
-     */
-    rcu_read_lock(&rcu_applied_lock);
-    list_for_each_entry_rcu ( data, &applied_list, applied_list )
+    rcu_read_lock(&rcu_payload_lock);
+    list_for_each_entry_rcu ( data, &payload_list, list )
     {
         if ( (ptr >= data->rw_addr &&
               ptr < (data->rw_addr + data->rw_size)) ||
@@ -130,7 +127,7 @@ bool_t is_patch(const void *ptr)
         }
 
     }
-    rcu_read_unlock(&rcu_applied_lock);
+    rcu_read_unlock(&rcu_payload_lock);
 
     return r;
 }
@@ -166,12 +163,8 @@ static const char *cf_check livepatch_symbols_lookup(
     const void *va = (const void *)addr;
     const char *n = NULL;
 
-    /*
-     * Only RCU locking since this list is only ever changed during apply
-     * or revert context. And in case it dies there we need an safe list.
-     */
-    rcu_read_lock(&rcu_applied_lock);
-    list_for_each_entry_rcu ( data, &applied_list, applied_list )
+    rcu_read_lock(&rcu_payload_lock);
+    list_for_each_entry_rcu ( data, &payload_list, list )
     {
         if ( va < data->text_addr ||
              va >= (data->text_addr + data->text_size) )
@@ -200,7 +193,7 @@ static const char *cf_check livepatch_symbols_lookup(
         n = data->symtab[best].name;
         break;
     }
-    rcu_read_unlock(&rcu_applied_lock);
+    rcu_read_unlock(&rcu_payload_lock);
 
     return n;
 }
@@ -260,6 +253,9 @@ static void free_payload_data(struct payload *payload)
     vfree((void *)payload->text_addr);
 
     payload->pages = 0;
+
+    /* fstate gets allocated strictly after move_payload. */
+    XFREE(payload->fstate);
 }
 
 /*
@@ -656,6 +652,7 @@ static int prepare_payload(struct payload *payload,
 {
     const struct livepatch_elf_sec *sec;
     unsigned int i;
+    struct livepatch_func *funcs;
     struct livepatch_func *f;
     struct virtual_region *region;
     const Elf_Note *n;
@@ -666,14 +663,19 @@ static int prepare_payload(struct payload *payload,
         if ( !section_ok(elf, sec, sizeof(*payload->funcs)) )
             return -EINVAL;
 
-        payload->funcs = sec->load_addr;
+        payload->funcs = funcs = sec->load_addr;
         payload->nfuncs = sec->sec->sh_size / sizeof(*payload->funcs);
+
+        payload->fstate = xzalloc_array(typeof(*payload->fstate),
+                                        payload->nfuncs);
+        if ( !payload->fstate )
+            return -ENOMEM;
 
         for ( i = 0; i < payload->nfuncs; i++ )
         {
             int rc;
 
-            f = &(payload->funcs[i]);
+            f = &(funcs[i]);
 
             if ( f->version != LIVEPATCH_PAYLOAD_VERSION )
             {
@@ -1062,7 +1064,9 @@ static int build_symbol_table(struct payload *payload,
 static void free_payload(struct payload *data)
 {
     ASSERT(spin_is_locked(&payload_lock));
-    list_del(&data->list);
+    unregister_virtual_region(&data->region);
+    list_del_rcu(&data->list);
+    rcu_barrier();
     payload_cnt--;
     payload_version++;
     free_payload_data(data);
@@ -1161,7 +1165,8 @@ static int livepatch_upload(struct xen_sysctl_livepatch_upload *upload)
         INIT_LIST_HEAD(&data->list);
         INIT_LIST_HEAD(&data->applied_list);
 
-        list_add_tail(&data->list, &payload_list);
+        register_virtual_region(&data->region);
+        list_add_tail_rcu(&data->list, &payload_list);
         payload_cnt++;
         payload_version++;
     }
@@ -1361,7 +1366,22 @@ static int apply_payload(struct payload *data)
     ASSERT(!local_irq_is_enabled());
 
     for ( i = 0; i < data->nfuncs; i++ )
-        common_livepatch_apply(&data->funcs[i]);
+    {
+        const struct livepatch_func *func = &data->funcs[i];
+        struct livepatch_fstate *state = &data->fstate[i];
+
+        /* If the action has been already executed on this function, do nothing. */
+        if ( state->applied == LIVEPATCH_FUNC_APPLIED )
+        {
+            printk(XENLOG_WARNING LIVEPATCH
+                   "%s: %s has been already applied before\n",
+                   __func__, func->name);
+            continue;
+        }
+
+        arch_livepatch_apply(func, state);
+        state->applied = LIVEPATCH_FUNC_APPLIED;
+    }
 
     arch_livepatch_revive();
 
@@ -1372,17 +1392,12 @@ static int apply_payload(struct payload *data)
 
 static inline void apply_payload_tail(struct payload *data)
 {
-    /*
-     * We need RCU variant (which has barriers) in case we crash here.
-     * The applied_list is iterated by the trap code.
-     */
-    list_add_tail_rcu(&data->applied_list, &applied_list);
-    register_virtual_region(&data->region);
+    list_add_tail(&data->applied_list, &applied_list);
 
     data->state = LIVEPATCH_STATE_APPLIED;
 }
 
-static int revert_payload(struct payload *data)
+int revert_payload(struct payload *data)
 {
     unsigned int i;
     int rc;
@@ -1397,7 +1412,25 @@ static int revert_payload(struct payload *data)
     }
 
     for ( i = 0; i < data->nfuncs; i++ )
-        common_livepatch_revert(&data->funcs[i]);
+    {
+        const struct livepatch_func *func = &data->funcs[i];
+        struct livepatch_fstate *state = &data->fstate[i];
+
+        /*
+         * If the apply action hasn't been executed on this function, do
+         * nothing.
+         */
+        if ( !func->old_addr || state->applied == LIVEPATCH_FUNC_NOT_APPLIED )
+        {
+            printk(XENLOG_WARNING LIVEPATCH
+                   "%s: %s has not been applied before\n",
+                   __func__, func->name);
+            continue;
+        }
+
+        arch_livepatch_revert(func, state);
+        state->applied = LIVEPATCH_FUNC_NOT_APPLIED;
+    }
 
     /*
      * Since we are running with IRQs disabled and the hooks may call common
@@ -1415,15 +1448,9 @@ static int revert_payload(struct payload *data)
     return 0;
 }
 
-static inline void revert_payload_tail(struct payload *data)
+void revert_payload_tail(struct payload *data)
 {
-
-    /*
-     * We need RCU variant (which has barriers) in case we crash here.
-     * The applied_list is iterated by the trap code.
-     */
-    list_del_rcu(&data->applied_list);
-    unregister_virtual_region(&data->region);
+    list_del(&data->applied_list);
 
     data->reverted = true;
     data->state = LIVEPATCH_STATE_CHECKED;
@@ -1438,9 +1465,10 @@ static inline bool was_action_consistent(const struct payload *data, livepatch_f
 
     for ( i = 0; i < data->nfuncs; i++ )
     {
-        struct livepatch_func *f = &(data->funcs[i]);
+        const struct livepatch_func *f = &(data->funcs[i]);
+        const struct livepatch_fstate *s = &(data->fstate[i]);
 
-        if ( f->applied != expected_state )
+        if ( s->applied != expected_state )
         {
             printk(XENLOG_ERR LIVEPATCH "%s: Payload has a function: '%s' with inconsistent applied state.\n",
                    data->name, f->name ?: "noname");
@@ -2157,7 +2185,8 @@ static void cf_check livepatch_printall(unsigned char key)
 
         for ( i = 0; i < data->nfuncs; i++ )
         {
-            struct livepatch_func *f = &(data->funcs[i]);
+            const struct livepatch_func *f = &(data->funcs[i]);
+
             printk("    %s patch %p(%u) with %p (%u)\n",
                    f->name, f->old_addr, f->old_size, f->new_addr, f->new_size);
 

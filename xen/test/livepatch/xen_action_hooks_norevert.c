@@ -25,9 +25,10 @@ static int pre_apply_hook(livepatch_payload_t *payload)
 
     for (i = 0; i < payload->nfuncs; i++)
     {
-        struct livepatch_func *func = &payload->funcs[i];
+        const struct livepatch_func *func = &payload->funcs[i];
+        struct livepatch_fstate *fstate = &payload->fstate[i];
 
-        BUG_ON(func->applied == LIVEPATCH_FUNC_APPLIED);
+        BUG_ON(fstate->applied == LIVEPATCH_FUNC_APPLIED);
         printk(KERN_DEBUG "%s: pre applied: %s\n", __func__, func->name);
     }
 
@@ -44,9 +45,10 @@ static void post_apply_hook(livepatch_payload_t *payload)
 
     for (i = 0; i < payload->nfuncs; i++)
     {
-        struct livepatch_func *func = &payload->funcs[i];
+        const struct livepatch_func *func = &payload->funcs[i];
+        struct livepatch_fstate *fstate = &payload->fstate[i];
 
-        BUG_ON(func->applied != LIVEPATCH_FUNC_APPLIED);
+        BUG_ON(fstate->applied != LIVEPATCH_FUNC_APPLIED);
         printk(KERN_DEBUG "%s: post applied: %s\n", __func__, func->name);
     }
 
@@ -61,9 +63,10 @@ static int pre_revert_hook(livepatch_payload_t *payload)
 
     for (i = 0; i < payload->nfuncs; i++)
     {
-        struct livepatch_func *func = &payload->funcs[i];
+        const struct livepatch_func *func = &payload->funcs[i];
+        struct livepatch_fstate *fstate = &payload->fstate[i];
 
-        BUG_ON(func->applied != LIVEPATCH_FUNC_APPLIED);
+        BUG_ON(fstate->applied != LIVEPATCH_FUNC_APPLIED);
         printk(KERN_DEBUG "%s: pre reverted: %s\n", __func__, func->name);
     }
 
@@ -80,7 +83,7 @@ static int revert_hook(livepatch_payload_t *payload)
 
     for (i = 0; i < payload->nfuncs; i++)
     {
-        struct livepatch_func *func = &payload->funcs[i];
+        const struct livepatch_func *func = &payload->funcs[i];
 
         revert_cnt++;
         printk(KERN_DEBUG "%s: reverting: %s\n", __func__, func->name);
@@ -93,30 +96,19 @@ static int revert_hook(livepatch_payload_t *payload)
 
 static void post_revert_hook(livepatch_payload_t *payload)
 {
-    int i;
+    unsigned long flags;
 
     printk(KERN_DEBUG "%s: Hook starting.\n", __func__);
 
-    for (i = 0; i < payload->nfuncs; i++)
-    {
-        struct livepatch_func *func = &payload->funcs[i];
-
-        BUG_ON(revert_cnt != 1);
-        BUG_ON(func->applied != LIVEPATCH_FUNC_APPLIED);
-
-        /* Outside of quiesce zone: MAY TRIGGER HOST CRASH/UNDEFINED BEHAVIOR */
-        arch_livepatch_quiesce();
-        common_livepatch_revert(payload);
-        arch_livepatch_revive();
-        BUG_ON(func->applied == LIVEPATCH_FUNC_APPLIED);
-
-        printk(KERN_DEBUG "%s: post reverted: %s\n", __func__, func->name);
-    }
+    local_irq_save(flags);
+    BUG_ON(revert_payload(payload));
+    revert_payload_tail(payload);
+    local_irq_restore(flags);
 
     printk(KERN_DEBUG "%s: Hook done.\n", __func__);
 }
 
-LIVEPATCH_APPLY_HOOK(revert_hook);
+LIVEPATCH_REVERT_HOOK(revert_hook);
 
 LIVEPATCH_PREAPPLY_HOOK(pre_apply_hook);
 LIVEPATCH_POSTAPPLY_HOOK(post_apply_hook);

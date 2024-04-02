@@ -44,7 +44,7 @@ static xom_page_info* get_page_info_entry(const struct list_head* const lhead, c
     const struct list_head* next = lhead->next;
 
     while(next && next != lhead){
-        if(((xom_page_info*)next)->gfn.gfn == gfn.gfn)
+        if(((xom_page_info*)next)->gfn == gfn)
             return (xom_page_info*)next;
         next = next->next;
     }
@@ -62,16 +62,16 @@ static int set_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     if ( unlikely(!p2m) )
         return -EFAULT;
 
-    gdprintk(XENLOG_WARNING, "Entered set_xom_seal with gfn 0x%lx for %u pages. Max mapped page is 0x%lx\n", gfn.gfn , nr_pages, p2m->max_mapped_pfn);
+    gdprintk(XENLOG_WARNING, "Entered set_xom_seal with gfn 0x%lx for %u pages. Max mapped page is 0x%lx\n", gfn_x(gfn) , nr_pages, p2m->max_mapped_pfn);
 
     if (!nr_pages)
         return -EINVAL;
 
-    if ( gfn.gfn + nr_pages > p2m->max_mapped_pfn )
+    if ( gfn_x(gfn) + nr_pages > p2m->max_mapped_pfn )
         return -EOVERFLOW;
 
     for ( i = 0; i < nr_pages; i++) {
-        c_gfn = _gfn(gfn.gfn + i);
+        c_gfn = _gfn(gfn_x(gfn) + i);
         gfn_lock(p2m, c_gfn, 0);
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
@@ -99,17 +99,17 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
     if ( unlikely(!p2m) )
         return -EFAULT;
 
-    gdprintk(XENLOG_WARNING, "Entered clear_xom_seal with gfn 0x%lx for %u pages. Max mapped page is 0x%lx\n", gfn.gfn , nr_pages, p2m->max_mapped_pfn);
+    gdprintk(XENLOG_WARNING, "Entered clear_xom_seal with gfn 0x%lx for %u pages. Max mapped page is 0x%lx\n", gfn_x(gfn) , nr_pages, p2m->max_mapped_pfn);
 
     if (!nr_pages)
         return -EINVAL;
 
-    if ( gfn.gfn + nr_pages > p2m->max_mapped_pfn )
+    if ( gfn_x(gfn) + nr_pages > p2m->max_mapped_pfn )
         return -EOVERFLOW;
 
 
     for ( i = 0; i < nr_pages; i++ ) {
-        c_gfn = _gfn(gfn.gfn + i);
+        c_gfn = _gfn(gfn_x(gfn) + i);
 
         gfn_lock(p2m, c_gfn, 0);
         // Check whether the provided gfn is actually an XOM page
@@ -120,7 +120,7 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
         }
 
         // Map the page into our address space
-        page = get_page_from_gfn(d, c_gfn.gfn, NULL, P2M_ALLOC);
+        page = get_page_from_gfn(d, gfn_x(c_gfn), NULL, P2M_ALLOC);
 
         if (!page) {
             ret = -EINVAL;
@@ -176,16 +176,16 @@ static int create_xom_subpages(struct domain* d, gfn_t gfn, unsigned int nr_page
     if ( unlikely(!p2m) )
         return -EFAULT;
 
-    gdprintk(XENLOG_WARNING, "Entered create_subpages with gfn 0x%lx for %u (4KB!) pages. Max mapped page is 0x%lx\n", gfn.gfn , nr_pages, p2m->max_mapped_pfn);
+    gdprintk(XENLOG_WARNING, "Entered create_subpages with gfn 0x%lx for %u (4KB!) pages. Max mapped page is 0x%lx\n", gfn_x(gfn) , nr_pages, p2m->max_mapped_pfn);
 
     if (!nr_pages)
         return -EINVAL;
 
-    if ( gfn.gfn + nr_pages > p2m->max_mapped_pfn )
+    if ( gfn_x(gfn) + nr_pages > p2m->max_mapped_pfn )
         return -EOVERFLOW;
 
     for ( i = 0; i < nr_pages; i++) {
-        c_gfn = _gfn(gfn.gfn + i);
+        c_gfn = _gfn(gfn_x(gfn) + i);
 
         subpage_info = xmalloc(xom_page_info);
         if(!subpage_info)
@@ -235,12 +235,12 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     if ( unlikely(!p2m) )
         return -EFAULT;
 
-    if (gfn_src.gfn > p2m->max_mapped_pfn )
+    if (gfn_x(gfn_src) > p2m->max_mapped_pfn )
         return -EOVERFLOW;
 
     // Copy command from gfn_src
     gfn_lock(p2m, gfn_src, 0);
-    page = get_page_from_gfn(d, gfn_src.gfn, NULL, P2M_ALLOC);
+    page = get_page_from_gfn(d, gfn_x(gfn_src), NULL, P2M_ALLOC);
     if(!page){
         gfn_unlock(p2m, gfn_src, 0);
         return -EINVAL;
@@ -251,7 +251,7 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     gfn_unlock(p2m, gfn_src, 0);
     put_page(page);
 
-    gdprintk(XENLOG_WARNING, "Copying %u subpages from %lx to %lx\n", command.num_subpages, gfn_src.gfn, gfn_dest.gfn);
+    gdprintk(XENLOG_WARNING, "Copying %u subpages from %lx to %lx\n", command.num_subpages, gfn_x(gfn_src), gfn_x(gfn_dest));
 
     // Validate command
     if(command.num_subpages > MAX_SUBPAGES_PER_CMD)
@@ -265,7 +265,7 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
 
     // Execute command
     gfn_lock(p2m, gfn_dest, 0);
-    page = get_page_from_gfn(d, gfn_dest.gfn, NULL, P2M_ALLOC);
+    page = get_page_from_gfn(d, gfn_x(gfn_dest), NULL, P2M_ALLOC);
     if(!page){
         gfn_unlock(p2m, gfn_dest, 0);
         return -EINVAL;
@@ -306,7 +306,7 @@ static int map_secret_page_to_guest(struct domain* d, gfn_t gfn_dest) {
     p2m = p2m_get_hostp2m(d);
 
     gfn_lock(p2m, gfn_dest, 0);
-    page = get_page_from_gfn(d, gfn_dest.gfn, NULL, P2M_ALLOC);
+    page = get_page_from_gfn(d, gfn_x(gfn_dest), NULL, P2M_ALLOC);
     if(!page){
         gfn_unlock(p2m, gfn_dest, 0);
         return -EINVAL;

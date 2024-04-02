@@ -12,7 +12,6 @@ Xen hypervisor code and related documents.
    rules
    deviations
    C-language-toolchain
-   C-runtime-failures
    documenting-violations
    exclude-list
    xen-static-analysis

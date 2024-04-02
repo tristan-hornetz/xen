@@ -24,7 +24,7 @@
 #define superpage_aligned(_x)  (((_x)&(SUPERPAGE_PAGES-1))==0)
 
 /* Enforce lock ordering when grabbing the "external" page_alloc lock */
-static inline void lock_page_alloc(struct p2m_domain *p2m)
+static always_inline void lock_page_alloc(struct p2m_domain *p2m)
 {
     page_alloc_mm_pre_lock(p2m->domain);
     spin_lock(&(p2m->domain->page_alloc_lock));
@@ -1359,19 +1359,28 @@ mark_populate_on_demand(struct domain *d, unsigned long gfn_l,
         }
     }
 
+    /*
+     * P2M update and stats increment need to collectively be under PoD lock,
+     * to prevent code elsewhere observing PoD entry count being zero despite
+     * there actually still being PoD entries (created by the p2m_set_entry()
+     * invocation below).
+     */
+    pod_lock(p2m);
+
     /* Now, actually do the two-way mapping */
     rc = p2m_set_entry(p2m, gfn, INVALID_MFN, order,
                        p2m_populate_on_demand, p2m->default_access);
     if ( rc == 0 )
     {
-        pod_lock(p2m);
         p2m->pod.entry_count += 1UL << order;
         p2m->pod.entry_count -= pod_count;
         BUG_ON(p2m->pod.entry_count < 0);
-        pod_unlock(p2m);
-
-        ioreq_request_mapcache_invalidate(d);
     }
+
+    pod_unlock(p2m);
+
+    if ( rc == 0 )
+        ioreq_request_mapcache_invalidate(d);
     else if ( order )
     {
         /*

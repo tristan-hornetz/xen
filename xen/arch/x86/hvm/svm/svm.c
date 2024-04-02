@@ -2559,6 +2559,7 @@ const struct hvm_function_table * __init start_svm(void)
 
     if ( _svm_cpu_up(true) )
     {
+        setup_clear_cpu_cap(X86_FEATURE_SVM);
         printk("SVM: failed to initialise.\n");
         return NULL;
     }

@@ -2432,6 +2432,16 @@ void libxl__spawn_stub_dm(libxl__egc *egc, libxl__stub_dm_spawn_state *sdss)
                         "%s",
                         libxl_bios_type_to_string(guest_config->b_info.u.hvm.bios));
     }
+    /* Disable relocating memory to make the MMIO hole larger
+     * unless we're running qemu-traditional and vNUMA is not
+     * configured. */
+    libxl__xs_printf(gc, XBT_NULL,
+                     libxl__sprintf(gc, "%s/hvmloader/allow-memory-relocate",
+                                    libxl__xs_get_dompath(gc, guest_domid)),
+                     "%d",
+                     guest_config->b_info.device_model_version
+                        == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN_TRADITIONAL &&
+                     !libxl__vnuma_configured(&guest_config->b_info));
     ret = xc_domain_set_target(ctx->xch, dm_domid, guest_domid);
     if (ret<0) {
         LOGED(ERROR, guest_domid, "setting target domain %d -> %d",
@@ -3162,8 +3172,8 @@ static void device_model_spawn_outcome(libxl__egc *egc,
 
     /* Check if spawn failed */
     if (rc) goto out;
-
-    if (d_config->b_info.device_model_version
+    /* d_config is NULL for xl devd/libxl__spawn_qemu_xenpv_backend(). */
+    if (d_config && d_config->b_info.device_model_version
             == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN) {
         rc = libxl__ev_time_register_rel(ao, &dmss->timeout,
                                          devise_model_postconfig_timeout,

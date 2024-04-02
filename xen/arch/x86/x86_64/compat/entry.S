@@ -15,7 +15,7 @@ ENTRY(entry_int82)
         ENDBR64
         ALTERNATIVE "", clac, X86_FEATURE_XEN_SMAP
         pushq $0
-        movl  $HYPERCALL_VECTOR, 4(%rsp)
+        movl  $HYPERCALL_VECTOR, EFRAME_entry_vector(%rsp)
         SAVE_ALL compat=1 /* DPL1 gate, restricted to 32bit PV guests only. */
 
         SPEC_CTRL_ENTRY_FROM_PV /* Req: %rsp=regs/cpuinfo, %rdx=0, Clob: acd */
@@ -161,6 +161,12 @@ ENTRY(compat_restore_all_guest)
         SPEC_CTRL_EXIT_TO_PV    /* Req: a=spec_ctrl %rsp=regs/cpuinfo, Clob: cd */
 
         RESTORE_ALL adj=8 compat=1
+
+        /* Account for ev/ec having already been popped off the stack. */
+        SPEC_CTRL_COND_VERW \
+            scf=STK_REL(CPUINFO_spec_ctrl_flags, CPUINFO_rip), \
+            sel=STK_REL(CPUINFO_verw_sel,        CPUINFO_rip)
+
 .Lft0:  iretq
         _ASM_PRE_EXTABLE(.Lft0, handle_exception)
 

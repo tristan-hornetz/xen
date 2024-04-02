@@ -2370,10 +2370,10 @@ By default SSBD will be mitigated at runtime (i.e `ssbd=runtime`).
 
 ### spec-ctrl (x86)
 > `= List of [ <bool>, xen=<bool>, {pv,hvm}=<bool>,
->              {msr-sc,rsb,md-clear,ibpb-entry}=<bool>|{pv,hvm}=<bool>,
+>              {msr-sc,rsb,verw,ibpb-entry}=<bool>|{pv,hvm}=<bool>,
 >              bti-thunk=retpoline|lfence|jmp, {ibrs,ibpb,ssbd,psfd,
 >              eager-fpu,l1d-flush,branch-harden,srb-lock,
->              unpriv-mmio,gds-mit,div-scrub}=<bool> ]`
+>              unpriv-mmio,gds-mit,div-scrub,lock-harden}=<bool> ]`
 
 Controls for speculative execution sidechannel mitigations.  By default, Xen
 will pick the most appropriate mitigations based on compiled in support,
@@ -2395,7 +2395,7 @@ in place for guests to use.
 
 Use of a positive boolean value for either of these options is invalid.
 
-The `pv=`, `hvm=`, `msr-sc=`, `rsb=`, `md-clear=` and `ibpb-entry=` options
+The `pv=`, `hvm=`, `msr-sc=`, `rsb=`, `verw=` and `ibpb-entry=` options
 offer fine grained control over the primitives by Xen.  These impact Xen's
 ability to protect itself, and/or Xen's ability to virtualise support for
 guests to use.
@@ -2412,11 +2412,12 @@ guests to use.
   guests and if disabled, guests will be unable to use IBRS/STIBP/SSBD/etc.
 * `rsb=` offers control over whether to overwrite the Return Stack Buffer /
   Return Address Stack on entry to Xen and on idle.
-* `md-clear=` offers control over whether to use VERW to flush
-  microarchitectural buffers on idle and exit from Xen.  *Note: For
-  compatibility with development versions of this fix, `mds=` is also accepted
-  on Xen 4.12 and earlier as an alias.  Consult vendor documentation in
-  preference to here.*
+* `verw=` offers control over whether to use VERW for its scrubbing side
+  effects at appropriate privilege transitions.  The exact side effects are
+  microarchitecture and microcode specific.  *Note: `md-clear=` is accepted as
+  a deprecated alias.  For compatibility with development versions of XSA-297,
+  `mds=` is also accepted on Xen 4.12 and earlier as an alias.  Consult vendor
+  documentation in preference to here.*
 * `ibpb-entry=` offers control over whether IBPB (Indirect Branch Prediction
   Barrier) is used on entry to Xen.  This is used by default on hardware
   vulnerable to Branch Type Confusion, and hardware vulnerable to Speculative
@@ -2424,11 +2425,11 @@ guests to use.
   performance reasons dom0 is unprotected by default.  If it is necessary to
   protect dom0 too, boot with `spec-ctrl=ibpb-entry`.
 
-If Xen was compiled with INDIRECT_THUNK support, `bti-thunk=` can be used to
-select which of the thunks gets patched into the `__x86_indirect_thunk_%reg`
-locations.  The default thunk is `retpoline` (generally preferred), with the
-alternatives being `jmp` (a `jmp *%reg` gadget, minimal overhead), and
-`lfence` (an `lfence; jmp *%reg` gadget).
+If Xen was compiled with `CONFIG_INDIRECT_THUNK` support, `bti-thunk=` can be
+used to select which of the thunks gets patched into the
+`__x86_indirect_thunk_%reg` locations.  The default thunk is `retpoline`
+(generally preferred), with the alternatives being `jmp` (a `jmp *%reg` gadget,
+minimal overhead), and `lfence` (an `lfence; jmp *%reg` gadget).
 
 On hardware supporting IBRS (Indirect Branch Restricted Speculation), the
 `ibrs=` option can be used to force or prevent Xen using the feature itself.
@@ -2498,6 +2499,11 @@ of the AVX2 Gather instructions.
 On all hardware, the `div-scrub=` option can be used to force or prevent Xen
 from mitigating the DIV-leakage vulnerability.  By default, Xen will mitigate
 DIV-leakage on hardware believed to be vulnerable.
+
+If Xen is compiled with `CONFIG_SPECULATIVE_HARDEN_LOCK`, the `lock-harden=`
+boolean can be used to force or prevent Xen from using speculation barriers to
+protect lock critical regions.  This mitigation won't be engaged by default,
+and needs to be explicitly enabled on the command line.
 
 ### sync_console
 > `= <boolean>`
