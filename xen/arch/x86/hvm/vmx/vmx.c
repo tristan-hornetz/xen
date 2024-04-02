@@ -4060,8 +4060,7 @@ static void handle_register_clear(struct cpu_user_regs *regs) {
         clear_sse_regs();
 
     if(reg_clear_type == REG_CLEAR_TYPE_VECTOR) {
-        regs->r15 = 0xbabababababababaull;
-        asm volatile ("sfence");
+        regs->r15 = regs->r14 = 0xbabababababababaull;
         return;
     }
 
@@ -4072,8 +4071,6 @@ static void handle_register_clear(struct cpu_user_regs *regs) {
     regs->rsp = reg_backup.sp;
     regs->rbp = reg_backup.bp;
     regs->r15 = 0xdadadadadadadadaull;
-
-    asm volatile ("sfence");
 }
 
 void vmx_vmexit_handler(struct cpu_user_regs *regs)
