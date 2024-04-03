@@ -785,8 +785,14 @@ static int prepare_payload(struct payload *payload,
     region = &payload->region;
 
     region->symbols_lookup = livepatch_symbols_lookup;
-    region->start = payload->text_addr;
-    region->end = payload->text_addr + payload->text_size;
+    region->text_start = payload->text_addr;
+    region->text_end = payload->text_addr + payload->text_size;
+
+    if ( payload->ro_size )
+    {
+        region->rodata_start = payload->ro_addr;
+        region->rodata_end = payload->ro_addr + payload->ro_size;
+    }
 
     /* Optional sections. */
     for ( i = 0; i < BUGFRAME_NR; i++ )

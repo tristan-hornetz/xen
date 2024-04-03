@@ -465,6 +465,16 @@ static void __init guest_common_max_feature_adjustments(uint32_t *fs)
              raw_cpu_policy.feat.clwb )
             __set_bit(X86_FEATURE_CLWB, fs);
     }
+
+    /*
+     * Topology information inside the guest is entirely at the toolstack's
+     * discretion, and bears no relationship to the host we're running on.
+     *
+     * HTT identifies p->basic.lppp as valid
+     * CMP_LEGACY identifies p->extd.nc as valid
+     */
+    __set_bit(X86_FEATURE_HTT, fs);
+    __set_bit(X86_FEATURE_CMP_LEGACY, fs);
 }
 
 static void __init guest_common_default_feature_adjustments(uint32_t *fs)
@@ -520,6 +530,18 @@ static void __init guest_common_default_feature_adjustments(uint32_t *fs)
     }
 
     /*
+     * Topology information is at the toolstack's discretion so these are
+     * unconditionally set in max, but pick a default which matches the host.
+     */
+    __clear_bit(X86_FEATURE_HTT, fs);
+    if ( cpu_has_htt )
+        __set_bit(X86_FEATURE_HTT, fs);
+
+    __clear_bit(X86_FEATURE_CMP_LEGACY, fs);
+    if ( cpu_has_cmp_legacy )
+        __set_bit(X86_FEATURE_CMP_LEGACY, fs);
+
+    /*
      * On certain hardware, speculative or errata workarounds can result in
      * TSX being placed in "force-abort" mode, where it doesn't actually
      * function as expected, but is technically compatible with the ISA.
@@ -565,6 +587,14 @@ static void __init calculate_pv_max_policy(void)
 
     for ( i = 0; i < ARRAY_SIZE(fs); ++i )
         fs[i] &= pv_max_featuremask[i];
+
+    /*
+     * Xen at the time of writing (Feb 2024, 4.19 dev cycle) used to leak the
+     * host x2APIC capability into PV guests, but never supported the guest
+     * trying to turn x2APIC mode on.  Tolerate an incoming VM which saw the
+     * x2APIC CPUID bit and is alive enough to migrate.
+     */
+    __set_bit(X86_FEATURE_X2APIC, fs);
 
     /*
      * If Xen isn't virtualising MSR_SPEC_CTRL for PV guests (functional
@@ -857,14 +887,6 @@ void recalculate_cpuid_policy(struct domain *d)
             __clear_bit(X86_FEATURE_SVM, max_fs);
         }
     }
-
-    /*
-     * Allow the toolstack to set HTT, X2APIC and CMP_LEGACY.  These bits
-     * affect how to interpret topology information in other cpuid leaves.
-     */
-    __set_bit(X86_FEATURE_HTT, max_fs);
-    __set_bit(X86_FEATURE_X2APIC, max_fs);
-    __set_bit(X86_FEATURE_CMP_LEGACY, max_fs);
 
     /*
      * 32bit PV domains can't use any Long Mode features, and cannot use

@@ -9,11 +9,21 @@
 #include <xen/list.h>
 #include <xen/symbols.h>
 
+/*
+ * Despite it's name, this is a module(ish) description.
+ *
+ * There's one region for the runtime .text/etc, one region for .init during
+ * boot only, and one region per livepatch.
+ */
 struct virtual_region
 {
     struct list_head list;
-    const void *start;                /* Virtual address start. */
-    const void *end;                  /* Virtual address end. */
+
+    const void *text_start;                /* .text virtual address start. */
+    const void *text_end;                  /* .text virtual address end. */
+
+    const void *rodata_start;              /* .rodata virtual address start (optional). */
+    const void *rodata_end;                /* .rodata virtual address end. */
 
     /* If this is NULL the default lookup mechanism is used. */
     symbols_lookup_t *symbols_lookup;
