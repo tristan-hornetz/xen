@@ -457,6 +457,8 @@ static int vmx_init_vmcs_config(bool bsp)
     if ( !(_vmx_secondary_exec_control & SECONDARY_EXEC_ENABLE_VM_FUNCTIONS) )
         _vmx_secondary_exec_control &= ~SECONDARY_EXEC_ENABLE_VIRT_EXCEPTIONS;
 
+    _vmx_secondary_exec_control &= ~SECONDARY_EXEC_RDRAND_EXITING;
+
     min = 0;
     opt = (VM_ENTRY_LOAD_GUEST_PAT | VM_ENTRY_LOAD_GUEST_EFER |
            VM_ENTRY_LOAD_BNDCFGS);
