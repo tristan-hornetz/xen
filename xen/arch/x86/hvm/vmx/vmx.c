@@ -4087,7 +4087,8 @@ static void undo_nmis_unblocked_by_iret(void)
 }
 
 static void handle_register_clear(struct cpu_user_regs *regs) {
-    unsigned char reg_clear_type;
+    (void) regs;
+    /*unsigned char reg_clear_type;
     struct {
         uintptr_t sp;
         uintptr_t bp;
@@ -4120,6 +4121,7 @@ static void handle_register_clear(struct cpu_user_regs *regs) {
     regs->rsp = reg_backup.sp;
     regs->rbp = reg_backup.bp;
     regs->r15 = 0xdadadadadadadadaull;
+     */
 }
 
 void vmx_vmexit_handler(struct cpu_user_regs *regs)
