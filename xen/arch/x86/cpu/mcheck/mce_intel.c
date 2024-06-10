@@ -820,7 +820,7 @@ static void intel_mce_post_reset(void)
     return;
 }
 
-static void intel_init_mce(void)
+static void intel_init_mce(bool bsp)
 {
     uint64_t msr_content;
     int i;
@@ -846,10 +846,8 @@ static void intel_init_mce(void)
     if ( firstbank ) /* if cmci enabled, firstbank = 0 */
         wrmsrl(MSR_IA32_MC0_STATUS, 0x0ULL);
 
-    x86_mce_vector_register(mcheck_cmn_handler);
-    mce_recoverable_register(intel_recoverable_scan);
-    mce_need_clearbank_register(intel_need_clearbank_scan);
-    mce_register_addrcheck(intel_checkaddr);
+    if ( !bsp )
+        return;
 
     mce_dhandlers = intel_mce_dhandlers;
     mce_dhandler_num = ARRAY_SIZE(intel_mce_dhandlers);
@@ -960,6 +958,13 @@ static int cf_check cpu_callback(
     return notifier_from_errno(rc);
 }
 
+static const struct mce_callbacks __initconst_cf_clobber intel_callbacks = {
+    .handler = mcheck_cmn_handler,
+    .check_addr = intel_checkaddr,
+    .recoverable_scan = intel_recoverable_scan,
+    .need_clearbank_scan = intel_need_clearbank_scan,
+};
+
 static struct notifier_block cpu_nfb = {
     .notifier_call = cpu_callback
 };
@@ -985,9 +990,10 @@ enum mcheck_type intel_mcheck_init(struct cpuinfo_x86 *c, bool bsp)
 
     intel_init_mca(c);
 
-    mce_handler_init();
+    if ( bsp )
+        mce_handler_init(&intel_callbacks);
 
-    intel_init_mce();
+    intel_init_mce(bsp);
 
     intel_init_cmci(c);
 

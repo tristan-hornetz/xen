@@ -48,6 +48,7 @@
 #include <asm/mce.h>
 #include <asm/monitor.h>
 #include <asm/prot-key.h>
+#include <asm/spec_ctrl.h>
 #include <public/arch-x86/cpuid.h>
 #include <xen/xom_seal.h>
 
@@ -761,6 +762,12 @@ void vmx_update_secondary_exec_control(struct vcpu *v)
                   v->arch.hvm.vmx.secondary_exec_control);
 }
 
+void vmx_update_tertiary_exec_control(const struct vcpu *v)
+{
+    __vmwrite(TERTIARY_VM_EXEC_CONTROL,
+              v->arch.hvm.vmx.tertiary_exec_control);
+}
+
 void vmx_update_exception_bitmap(struct vcpu *v)
 {
     u32 bitmap = unlikely(v->arch.hvm.vmx.vmx_realmode)
@@ -813,23 +820,44 @@ static void cf_check vmx_cpuid_policy_changed(struct vcpu *v)
     /*
      * We can safely pass MSR_SPEC_CTRL through to the guest, even if STIBP
      * isn't enumerated in hardware, as SPEC_CTRL_STIBP is ignored.
+     *
+     * If VMX_VIRT_SPEC_CTRL is available, it is activated by default and the
+     * guest MSR_SPEC_CTRL value lives in the VMCS.  Otherwise, it lives in
+     * the MSR load/save list.
      */
     if ( cp->feat.ibrsb )
     {
         vmx_clear_msr_intercept(v, MSR_SPEC_CTRL, VMX_MSR_RW);
 
-        rc = vmx_add_guest_msr(v, MSR_SPEC_CTRL, 0);
-        if ( rc )
-            goto out;
+        if ( !cpu_has_vmx_virt_spec_ctrl )
+        {
+            rc = vmx_add_guest_msr(v, MSR_SPEC_CTRL, 0);
+            if ( rc )
+                goto out;
+        }
     }
     else
     {
         vmx_set_msr_intercept(v, MSR_SPEC_CTRL, VMX_MSR_RW);
 
-        rc = vmx_del_msr(v, MSR_SPEC_CTRL, VMX_MSR_GUEST);
-        if ( rc && rc != -ESRCH )
-            goto out;
-        rc = 0; /* Tolerate -ESRCH */
+        if ( !cpu_has_vmx_virt_spec_ctrl )
+            vmx_del_msr(v, MSR_SPEC_CTRL, VMX_MSR_GUEST);
+    }
+
+    if ( cpu_has_vmx_virt_spec_ctrl )
+    {
+        /*
+         * If we're on BHI_DIS_S capable hardware, the short loop sequence is
+         * not sufficient to mitigate Native-BHI.  If the VM can't see it
+         * (i.e. it's levelled with older hardware), force it behind the
+         * guests back for safey.
+         *
+         * Because there's not a real Host/Guest split of the MSR_SPEC_CTRL
+         * value, this only works as expected when Xen is using BHI_DIS_S too.
+         */
+        bool force_bhi_dis_s = opt_bhi_dis_s && !cp->feat.bhi_ctrl;
+
+        __vmwrite(SPEC_CTRL_MASK, force_bhi_dis_s ? SPEC_CTRL_BHI_DIS_S : 0);
     }
 
     /* MSR_PRED_CMD is safe to pass through if the guest knows about it. */
@@ -2631,6 +2659,10 @@ static uint64_t cf_check vmx_get_reg(struct vcpu *v, unsigned int reg)
     switch ( reg )
     {
     case MSR_SPEC_CTRL:
+        if ( cpu_has_vmx_virt_spec_ctrl )
+            /* Guest value in VMCS - fetched below. */
+            break;
+
         rc = vmx_read_guest_msr(v, reg, &val);
         if ( rc )
         {
@@ -2654,6 +2686,11 @@ static uint64_t cf_check vmx_get_reg(struct vcpu *v, unsigned int reg)
     vmx_vmcs_enter(v);
     switch ( reg )
     {
+    case MSR_SPEC_CTRL:
+        ASSERT(cpu_has_vmx_virt_spec_ctrl);
+        __vmread(SPEC_CTRL_SHADOW, &val);
+        break;
+
     case MSR_IA32_BNDCFGS:
         __vmread(GUEST_BNDCFGS, &val);
         break;
@@ -2680,6 +2717,10 @@ static void cf_check vmx_set_reg(struct vcpu *v, unsigned int reg, uint64_t val)
     switch ( reg )
     {
     case MSR_SPEC_CTRL:
+        if ( cpu_has_vmx_virt_spec_ctrl )
+            /* Guest value in VMCS - set below. */
+            break;
+
         rc = vmx_write_guest_msr(v, reg, val);
         if ( rc )
         {
@@ -2700,6 +2741,11 @@ static void cf_check vmx_set_reg(struct vcpu *v, unsigned int reg, uint64_t val)
     vmx_vmcs_enter(v);
     switch ( reg )
     {
+    case MSR_SPEC_CTRL:
+        ASSERT(cpu_has_vmx_virt_spec_ctrl);
+        __vmwrite(SPEC_CTRL_SHADOW, val);
+        break;
+
     case MSR_IA32_BNDCFGS:
         __vmwrite(GUEST_BNDCFGS, val);
         break;
@@ -4079,6 +4125,7 @@ static void handle_register_clear(struct cpu_user_regs *regs) {
 void vmx_vmexit_handler(struct cpu_user_regs *regs)
 {
     unsigned long exit_qualification, exit_reason, idtv_info, intr_info = 0;
+    unsigned long cs_ar_bytes = 0;
     unsigned int vector = 0;
     struct vcpu *v = current;
     struct domain *currd = v->domain;
@@ -4087,7 +4134,10 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
     __vmread(GUEST_RSP,    &regs->rsp);
     __vmread(GUEST_RFLAGS, &regs->rflags);
 
-    hvm_invalidate_regs_fields(regs);
+    if ( hvm_long_mode_active(v) )
+        __vmread(GUEST_CS_AR_BYTES, &cs_ar_bytes);
+
+    hvm_sanitize_regs_fields(regs, !(cs_ar_bytes & X86_SEG_AR_CS_LM_ACTIVE));
 
     if ( paging_mode_hap(v->domain) )
     {

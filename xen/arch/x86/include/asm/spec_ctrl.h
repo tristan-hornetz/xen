@@ -9,10 +9,10 @@
 #define __X86_SPEC_CTRL_H__
 
 /*
- * Encoding of:
- *   cpuinfo.spec_ctrl_flags
- *   default_spec_ctrl_flags
- *   domain.spec_ctrl_flags
+ * Encoding of Xen's speculation control flags in:
+ *   cpuinfo.scf
+ *   default_scf
+ *   domain.scf
  *
  * Live settings are in the top-of-stack block, because they need to be
  * accessable when XPTI is active.  Some settings are fixed from boot, some
@@ -24,6 +24,7 @@
 #define SCF_verw       (1 << 3)
 #define SCF_ist_ibpb   (1 << 4)
 #define SCF_entry_ibpb (1 << 5)
+#define SCF_entry_bhb  (1 << 6)
 
 /*
  * The IST paths (NMI/#MC) can interrupt any arbitrary context.  Some
@@ -42,7 +43,7 @@
  * Some speculative protections are per-domain.  These settings are merged
  * into the top-of-stack block in the context switch path.
  */
-#define SCF_DOM_MASK (SCF_verw | SCF_entry_ibpb)
+#define SCF_DOM_MASK (SCF_verw | SCF_entry_ibpb | SCF_entry_bhb)
 
 #ifndef __ASSEMBLY__
 
@@ -77,12 +78,13 @@ static always_inline void spec_ctrl_new_guest_context(void)
 
 extern int8_t opt_ibpb_ctxt_switch;
 extern bool opt_ssbd;
+extern int8_t opt_bhi_dis_s;
 extern int8_t opt_eager_fpu;
 extern int8_t opt_l1d_flush;
 
 extern bool bsp_delay_spec_ctrl;
-extern uint8_t default_xen_spec_ctrl;
-extern uint8_t default_spec_ctrl_flags;
+extern unsigned int default_xen_spec_ctrl;
+extern uint8_t default_scf;
 
 extern int8_t opt_xpti_hwdom, opt_xpti_domu;
 
@@ -102,7 +104,7 @@ static inline void init_shadow_spec_ctrl_state(void)
 
     info->shadow_spec_ctrl = 0;
     info->xen_spec_ctrl = default_xen_spec_ctrl;
-    info->spec_ctrl_flags = default_spec_ctrl_flags;
+    info->scf = default_scf;
 
     /*
      * For least latency, the VERW selector should be a writeable data
@@ -126,7 +128,7 @@ static always_inline void spec_ctrl_enter_idle(struct cpu_info *info)
      */
     info->shadow_spec_ctrl = val;
     barrier();
-    info->spec_ctrl_flags |= SCF_use_shadow;
+    info->scf |= SCF_use_shadow;
     barrier();
     alternative_input("", "wrmsr", X86_FEATURE_SC_MSR_IDLE,
                       "a" (val), "c" (MSR_SPEC_CTRL), "d" (0));
@@ -175,7 +177,7 @@ static always_inline void spec_ctrl_exit_idle(struct cpu_info *info)
      * Disable shadowing before updating the MSR.  There are no SMP issues
      * here; only local processor ordering concerns.
      */
-    info->spec_ctrl_flags &= ~SCF_use_shadow;
+    info->scf &= ~SCF_use_shadow;
     barrier();
     alternative_input("", "wrmsr", X86_FEATURE_SC_MSR_IDLE,
                       "a" (val), "c" (MSR_SPEC_CTRL), "d" (0));

@@ -258,6 +258,11 @@ static void cf_check amd_ctxt_switch_masking(const struct vcpu *next)
 #undef LAZY
 }
 
+#ifdef CONFIG_XEN_IBT /* Announce the function to ENDBR clobbering logic. */
+static const typeof(ctxt_switch_masking) __initconst_cf_clobber __used csm =
+    amd_ctxt_switch_masking;
+#endif
+
 /*
  * Mask the features and extended features returned by CPUID.  Parameters are
  * set from the boot line via two methods:
@@ -1302,7 +1307,7 @@ static void cf_check init_amd(struct cpuinfo_x86 *c)
 	amd_log_freq(c);
 }
 
-const struct cpu_dev amd_cpu_dev = {
+const struct cpu_dev __initconst_cf_clobber amd_cpu_dev = {
 	.c_early_init	= early_init_amd,
 	.c_init		= init_amd,
 };

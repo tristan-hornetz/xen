@@ -850,7 +850,8 @@ int arch_domain_create(struct domain *d,
     }
     else if ( is_pv_domain(d) )
     {
-        mapcache_domain_init(d);
+        if ( (rc = mapcache_domain_init(d)) != 0 )
+            goto fail;
 
         if ( (rc = pv_domain_initialise(d)) != 0 )
             goto fail;
@@ -2109,10 +2110,10 @@ void context_switch(struct vcpu *prev, struct vcpu *next)
             }
         }
 
-        /* Update the top-of-stack block with the new spec_ctrl settings. */
-        info->spec_ctrl_flags =
-            (info->spec_ctrl_flags       & ~SCF_DOM_MASK) |
-            (nextd->arch.spec_ctrl_flags &  SCF_DOM_MASK);
+        /* Update the top-of-stack block with the new speculation settings. */
+        info->scf =
+            (info->scf       & ~SCF_DOM_MASK) |
+            (nextd->arch.scf &  SCF_DOM_MASK);
     }
 
     sched_context_switched(prev, next);
@@ -2125,12 +2126,12 @@ void context_switch(struct vcpu *prev, struct vcpu *next)
     /* Ensure that the vcpu has an up-to-date time base. */
     update_vcpu_system_time(next);
 
-    reset_stack_and_jump_ind(nextd->arch.ctxt_switch->tail);
+    reset_stack_and_call_ind(nextd->arch.ctxt_switch->tail);
 }
 
 void continue_running(struct vcpu *same)
 {
-    reset_stack_and_jump_ind(same->domain->arch.ctxt_switch->tail);
+    reset_stack_and_call_ind(same->domain->arch.ctxt_switch->tail);
 }
 
 int __sync_local_execstate(void)

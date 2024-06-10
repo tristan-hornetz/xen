@@ -34,15 +34,42 @@ ENTRY(vmx_asm_vmexit_handler)
         mov  %rax,VCPU_hvm_guest_cr2(%rbx)
 
         /* SPEC_CTRL_ENTRY_FROM_VMX    Req: b=curr %rsp=regs/cpuinfo, Clob: acd */
+        /*
+         * RSB stuffing is to prevents RET predictions following guest
+         * entries.  This is *not* sufficient to flush all RSB entries on
+         * parts enumerating eIBRS, although the following restore_spec_ctrl
+         * does covers us.
+         */
         ALTERNATIVE "", DO_OVERWRITE_RSB, X86_FEATURE_SC_RSB_HVM
 
+        /*
+         * Restore Xen's MSR_SPEC_CTRL setting.  The guest's value resides in
+         * the MSR load/save list.  For Legacy IBRS, this flushes/inhibits
+         * indirect predictions and does not flush the RSB.  For eIBRS, this
+         * prevents CALLs/JMPs using predictions learnt at a lower predictor
+         * mode, and it flushes the RSB.  On eIBRS parts that also suffer from
+         * PBRSB, the prior RSB stuffing suffices to make the RSB safe.
+         */
         .macro restore_spec_ctrl
             mov    $MSR_SPEC_CTRL, %ecx
-            movzbl CPUINFO_xen_spec_ctrl(%rsp), %eax
+            mov    CPUINFO_xen_spec_ctrl(%rsp), %eax
             xor    %edx, %edx
             wrmsr
         .endm
         ALTERNATIVE "", restore_spec_ctrl, X86_FEATURE_SC_MSR_HVM
+
+        /*
+         * Clear the BHB to mitigate BHI.  Used on eIBRS parts, and uses RETs
+         * itself so must be after we've perfomed all the RET-safety we can.
+         */
+        testb $SCF_entry_bhb, CPUINFO_scf(%rsp)
+        jz .L_skip_bhb
+        ALTERNATIVE_2 "",                                    \
+            "call clear_bhb_loops", X86_SPEC_BHB_LOOPS,      \
+            "call clear_bhb_tsx", X86_SPEC_BHB_TSX
+.L_skip_bhb:
+
+        ALTERNATIVE "lfence", "", X86_SPEC_NO_LFENCE_ENTRY_VMX
         /* WARNING! `ret`, `call *`, `jmp *` not safe before this point. */
 
         /* Hardware clears MSR_DEBUGCTL on VMExit.  Reinstate it if debugging Xen. */
@@ -111,7 +138,7 @@ UNLIKELY_END(realmode)
         BUILD_BUG_ON(SCF_verw & ~0xff)
         movzbl VCPU_vmx_launched(%rbx), %ecx
         shl  $31, %ecx
-        movzbl CPUINFO_spec_ctrl_flags(%rsp), %eax
+        movzbl CPUINFO_scf(%rsp), %eax
         and  $SCF_verw, %eax
         or   %eax, %ecx
 

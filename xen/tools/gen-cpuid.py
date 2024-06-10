@@ -47,8 +47,8 @@ def parse_definitions(state):
     """
     feat_regex = re.compile(
         r"^XEN_CPUFEATURE\(([A-Z0-9_]+),"
-        "\s+([\s\d]+\*[\s\d]+\+[\s\d]+)\)"
-        "\s+/\*([\w!]*) .*$")
+        r"\s+([\s\d]+\*[\s\d]+\+[\s\d]+)\)"
+        r"\s+/\*([\w!]*) .*$")
 
     word_regex = re.compile(
         r"^/\* .* word (\d*) \*/$")
@@ -318,7 +318,8 @@ def crunch_numbers(state):
         # IBRSB/IBRS, and we pass this MSR directly to guests.  Treating them
         # as dependent features simplifies Xen's logic, and prevents the guest
         # from seeing implausible configurations.
-        IBRSB: [STIBP, SSBD, INTEL_PSFD, EIBRS],
+        IBRSB: [STIBP, SSBD, INTEL_PSFD, EIBRS,
+                IPRED_CTRL, RRSBA_CTRL, BHI_CTRL],
         IBRS: [AMD_STIBP, AMD_SSBD, PSFD, AUTO_IBRS,
                IBRS_ALWAYS, IBRS_FAST, IBRS_SAME_MODE],
         IBPB: [IBPB_RET, SBPB, IBPB_BRTYPE],

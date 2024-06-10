@@ -475,6 +475,21 @@ static void __init guest_common_max_feature_adjustments(uint32_t *fs)
      */
     __set_bit(X86_FEATURE_HTT, fs);
     __set_bit(X86_FEATURE_CMP_LEGACY, fs);
+
+    /*
+     * To mitigate Native-BHI, one option is to use a TSX Abort on capable
+     * systems.  This is safe even if RTM has been disabled for other reasons
+     * via MSR_TSX_{CTRL,FORCE_ABORT}.  However, a guest kernel doesn't get to
+     * know this type of information.
+     *
+     * Therefore the meaning of RTM_ALWAYS_ABORT has been adjusted, to instead
+     * mean "XBEGIN won't fault".  This is enough for a guest kernel to make
+     * an informed choice WRT mitigating Native-BHI.
+     *
+     * If RTM-capable, we can run a VM which has seen RTM_ALWAYS_ABORT.
+     */
+    if ( test_bit(X86_FEATURE_RTM, fs) )
+        __set_bit(X86_FEATURE_RTM_ALWAYS_ABORT, fs);
 }
 
 static void __init guest_common_default_feature_adjustments(uint32_t *fs)
@@ -547,9 +562,14 @@ static void __init guest_common_default_feature_adjustments(uint32_t *fs)
      * function as expected, but is technically compatible with the ISA.
      *
      * Do not advertise RTM to guests by default if it won't actually work.
+     * Instead, advertise RTM_ALWAYS_ABORT indicating that TSX Aborts are safe
+     * to use, e.g. for mitigating Native-BHI.
      */
     if ( rtm_disabled )
+    {
         __clear_bit(X86_FEATURE_RTM, fs);
+        __set_bit(X86_FEATURE_RTM_ALWAYS_ABORT, fs);
+    }
 }
 
 static void __init guest_common_feature_adjustments(uint32_t *fs)
@@ -583,6 +603,13 @@ static void __init calculate_pv_max_policy(void)
     unsigned int i;
 
     *p = host_cpu_policy;
+
+    /*
+     * Some VMs may have a larger-than-necessary feat max_subleaf.  Allow them
+     * to migrate in.
+     */
+    p->feat.max_subleaf = ARRAY_SIZE(p->feat.raw) - 1;
+
     x86_cpu_policy_to_featureset(p, fs);
 
     for ( i = 0; i < ARRAY_SIZE(fs); ++i )
@@ -623,6 +650,10 @@ static void __init calculate_pv_def_policy(void)
     unsigned int i;
 
     *p = pv_max_cpu_policy;
+
+    /* Default to the same max_subleaf as the host. */
+    p->feat.max_subleaf = host_cpu_policy.feat.max_subleaf;
+
     x86_cpu_policy_to_featureset(p, fs);
 
     for ( i = 0; i < ARRAY_SIZE(fs); ++i )
@@ -659,6 +690,13 @@ static void __init calculate_hvm_max_policy(void)
     const uint32_t *mask;
 
     *p = host_cpu_policy;
+
+    /*
+     * Some VMs may have a larger-than-necessary feat max_subleaf.  Allow them
+     * to migrate in.
+     */
+    p->feat.max_subleaf = ARRAY_SIZE(p->feat.raw) - 1;
+
     x86_cpu_policy_to_featureset(p, fs);
 
     mask = hvm_hap_supported() ?
@@ -760,6 +798,10 @@ static void __init calculate_hvm_def_policy(void)
     const uint32_t *mask;
 
     *p = hvm_max_cpu_policy;
+
+    /* Default to the same max_subleaf as the host. */
+    p->feat.max_subleaf = host_cpu_policy.feat.max_subleaf;
+
     x86_cpu_policy_to_featureset(p, fs);
 
     mask = hvm_hap_supported() ?

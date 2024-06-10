@@ -33,6 +33,17 @@ static int8_t __ro_after_init opt_ibpb_entry_pv = -1;
 static int8_t __ro_after_init opt_ibpb_entry_hvm = -1;
 static bool __ro_after_init opt_ibpb_entry_dom0;
 
+static int8_t __ro_after_init opt_bhb_entry_pv = -1;
+static int8_t __ro_after_init opt_bhb_entry_hvm = -1;
+static bool __ro_after_init opt_bhb_entry_dom0;
+static enum bhb_thunk {
+    BHB_DEFAULT,
+    BHB_NONE,
+    BHB_TSX,
+    BHB_SHORT,
+    BHB_LONG,
+} opt_bhb_seq __initdata;
+
 /* Cmdline controls for Xen's speculative settings. */
 static enum ind_thunk {
     THUNK_DEFAULT, /* Decide which thunk to use at boot time. */
@@ -47,20 +58,21 @@ static int8_t __initdata opt_ibrs = -1;
 static int8_t __initdata opt_stibp = -1;
 bool __ro_after_init opt_ssbd;
 static int8_t __initdata opt_psfd = -1;
+int8_t __ro_after_init opt_bhi_dis_s = -1;
 
 int8_t __ro_after_init opt_ibpb_ctxt_switch = -1;
-int8_t __read_mostly opt_eager_fpu = -1;
-int8_t __read_mostly opt_l1d_flush = -1;
+int8_t __ro_after_init opt_eager_fpu = -1;
+int8_t __ro_after_init opt_l1d_flush = -1;
 static bool __initdata opt_branch_harden =
     IS_ENABLED(CONFIG_SPECULATIVE_HARDEN_BRANCH);
 static bool __initdata opt_lock_harden;
 
 bool __initdata bsp_delay_spec_ctrl;
-uint8_t __read_mostly default_xen_spec_ctrl;
-uint8_t __read_mostly default_spec_ctrl_flags;
+unsigned int __ro_after_init default_xen_spec_ctrl;
+uint8_t __ro_after_init default_scf;
 
-paddr_t __read_mostly l1tf_addr_mask, __read_mostly l1tf_safe_maddr;
-bool __read_mostly cpu_has_bug_l1tf;
+paddr_t __ro_after_init l1tf_addr_mask, __ro_after_init l1tf_safe_maddr;
+bool __ro_after_init cpu_has_bug_l1tf;
 static unsigned int __initdata l1d_maxphysaddr;
 
 static bool __initdata cpu_has_bug_msbds_only; /* => minimal HT impact. */
@@ -115,8 +127,12 @@ static int __init cf_check parse_spec_ctrl(const char *s)
             opt_ibpb_entry_pv = 0;
             opt_ibpb_entry_hvm = 0;
             opt_ibpb_entry_dom0 = false;
+            opt_bhb_entry_pv = 0;
+            opt_bhb_entry_hvm = 0;
+            opt_bhb_entry_dom0 = false;
 
             opt_thunk = THUNK_JMP;
+            opt_bhb_seq = BHB_NONE;
             opt_ibrs = 0;
             opt_ibpb_ctxt_switch = false;
             opt_ssbd = false;
@@ -145,6 +161,7 @@ static int __init cf_check parse_spec_ctrl(const char *s)
             opt_rsb_pv = val;
             opt_verw_pv = val;
             opt_ibpb_entry_pv = val;
+            opt_bhb_entry_pv = val;
         }
         else if ( (val = parse_boolean("hvm", s, ss)) >= 0 )
         {
@@ -152,6 +169,7 @@ static int __init cf_check parse_spec_ctrl(const char *s)
             opt_rsb_hvm = val;
             opt_verw_hvm = val;
             opt_ibpb_entry_hvm = val;
+            opt_bhb_entry_hvm = val;
         }
         else if ( (val = parse_boolean("msr-sc", s, ss)) != -1 )
         {
@@ -239,6 +257,28 @@ static int __init cf_check parse_spec_ctrl(const char *s)
                 break;
             }
         }
+        else if ( (val = parse_boolean("bhb-entry", s, ss)) != -1 )
+        {
+            switch ( val )
+            {
+            case 0:
+            case 1:
+                opt_bhb_entry_pv = opt_bhb_entry_hvm =
+                    opt_bhb_entry_dom0 = val;
+                break;
+
+            case -2:
+                s += strlen("bhb-entry=");
+                if ( (val = parse_boolean("pv", s, ss)) >= 0 )
+                    opt_bhb_entry_pv = val;
+                else if ( (val = parse_boolean("hvm", s, ss)) >= 0 )
+                    opt_bhb_entry_hvm = val;
+                else
+            default:
+                    rc = -EINVAL;
+                break;
+            }
+        }
 
         /* Xen's speculative sidechannel mitigation settings. */
         else if ( !strncmp(s, "bti-thunk=", 10) )
@@ -259,6 +299,21 @@ static int __init cf_check parse_spec_ctrl(const char *s)
             else
                 rc = -EINVAL;
         }
+        else if ( !strncmp(s, "bhb-seq=", 8) )
+        {
+            s += strlen("bhb-seq=");
+
+            if ( !cmdline_strcmp(s, "none") )
+                opt_bhb_seq = BHB_NONE;
+            else if ( !cmdline_strcmp(s, "tsx") )
+                opt_bhb_seq = BHB_TSX;
+            else if ( !cmdline_strcmp(s, "short") )
+                opt_bhb_seq = BHB_SHORT;
+            else if ( !cmdline_strcmp(s, "long") )
+                opt_bhb_seq = BHB_LONG;
+            else
+                rc = -EINVAL;
+        }
 
         /* Bits in MSR_SPEC_CTRL. */
         else if ( (val = parse_boolean("ibrs", s, ss)) >= 0 )
@@ -269,6 +324,8 @@ static int __init cf_check parse_spec_ctrl(const char *s)
             opt_ssbd = val;
         else if ( (val = parse_boolean("psfd", s, ss)) >= 0 )
             opt_psfd = val;
+        else if ( (val = parse_boolean("bhi-dis-s", s, ss)) >= 0 )
+            opt_bhi_dis_s = val;
 
         /* Misc settings. */
         else if ( (val = parse_boolean("ibpb", s, ss)) >= 0 )
@@ -316,8 +373,8 @@ static int __init cf_check parse_spec_ctrl(const char *s)
 }
 custom_param("spec-ctrl", parse_spec_ctrl);
 
-int8_t __read_mostly opt_xpti_hwdom = -1;
-int8_t __read_mostly opt_xpti_domu = -1;
+int8_t __ro_after_init opt_xpti_hwdom = -1;
+int8_t __ro_after_init opt_xpti_domu = -1;
 
 static __init void xpti_init_default(void)
 {
@@ -381,8 +438,8 @@ static int __init cf_check parse_xpti(const char *s)
 }
 custom_param("xpti", parse_xpti);
 
-int8_t __read_mostly opt_pv_l1tf_hwdom = -1;
-int8_t __read_mostly opt_pv_l1tf_domu = -1;
+int8_t __ro_after_init opt_pv_l1tf_hwdom = -1;
+int8_t __ro_after_init opt_pv_l1tf_domu = -1;
 
 static int __init cf_check parse_pv_l1tf(const char *s)
 {
@@ -524,12 +581,17 @@ static void __init print_details(enum ind_thunk thunk)
                "\n");
 
     /* Settings for Xen's protection, irrespective of guests. */
-    printk("  Xen settings: %s%sSPEC_CTRL: %s%s%s%s%s, Other:%s%s%s%s%s%s%s\n",
+    printk("  Xen settings: %s%s%s%sSPEC_CTRL: %s%s%s%s%s%s, Other:%s%s%s%s%s%s%s\n",
            thunk != THUNK_NONE      ? "BTI-Thunk: " : "",
            thunk == THUNK_NONE      ? "" :
            thunk == THUNK_RETPOLINE ? "RETPOLINE, " :
            thunk == THUNK_LFENCE    ? "LFENCE, " :
            thunk == THUNK_JMP       ? "JMP, " : "?, ",
+           opt_bhb_seq != BHB_NONE    ? "BHB-Seq: " : "",
+           opt_bhb_seq == BHB_NONE    ? "" :
+           opt_bhb_seq == BHB_TSX     ? "TSX, " :
+           opt_bhb_seq == BHB_SHORT   ? "SHORT, " :
+           opt_bhb_seq == BHB_LONG    ? "LONG, " : "?, ",
            (!boot_cpu_has(X86_FEATURE_IBRSB) &&
             !boot_cpu_has(X86_FEATURE_IBRS))         ? "No" :
            (default_xen_spec_ctrl & SPEC_CTRL_IBRS)  ? "IBRS+" :  "IBRS-",
@@ -542,6 +604,8 @@ static void __init print_details(enum ind_thunk thunk)
            (!boot_cpu_has(X86_FEATURE_PSFD) &&
             !boot_cpu_has(X86_FEATURE_INTEL_PSFD))   ? "" :
            (default_xen_spec_ctrl & SPEC_CTRL_PSFD)  ? " PSFD+" : " PSFD-",
+           !boot_cpu_has(X86_FEATURE_BHI_CTRL)       ? "" :
+           (default_xen_spec_ctrl & SPEC_CTRL_BHI_DIS_S) ? " BHI_DIS_S+" : " BHI_DIS_S-",
            !(caps & ARCH_CAPS_TSX_CTRL)              ? "" :
            (opt_tsx & 1)                             ? " TSX+" : " TSX-",
            !cpu_has_srbds_ctrl                       ? "" :
@@ -566,11 +630,11 @@ static void __init print_details(enum ind_thunk thunk)
      * mitigation support for guests.
      */
 #ifdef CONFIG_HVM
-    printk("  Support for HVM VMs:%s%s%s%s%s%s%s\n",
+    printk("  Support for HVM VMs:%s%s%s%s%s%s%s%s\n",
            (boot_cpu_has(X86_FEATURE_SC_MSR_HVM) ||
             boot_cpu_has(X86_FEATURE_SC_RSB_HVM) ||
             boot_cpu_has(X86_FEATURE_IBPB_ENTRY_HVM) ||
-            amd_virt_spec_ctrl ||
+            opt_bhb_entry_hvm || amd_virt_spec_ctrl ||
             opt_eager_fpu || opt_verw_hvm)           ? ""               : " None",
            boot_cpu_has(X86_FEATURE_SC_MSR_HVM)      ? " MSR_SPEC_CTRL" : "",
            (boot_cpu_has(X86_FEATURE_SC_MSR_HVM) ||
@@ -578,20 +642,23 @@ static void __init print_details(enum ind_thunk thunk)
            boot_cpu_has(X86_FEATURE_SC_RSB_HVM)      ? " RSB"           : "",
            opt_eager_fpu                             ? " EAGER_FPU"     : "",
            opt_verw_hvm                              ? " VERW"          : "",
-           boot_cpu_has(X86_FEATURE_IBPB_ENTRY_HVM)  ? " IBPB-entry"    : "");
+           boot_cpu_has(X86_FEATURE_IBPB_ENTRY_HVM)  ? " IBPB-entry"    : "",
+           opt_bhb_entry_hvm                         ? " BHB-entry"     : "");
 
 #endif
 #ifdef CONFIG_PV
-    printk("  Support for PV VMs:%s%s%s%s%s%s\n",
+    printk("  Support for PV VMs:%s%s%s%s%s%s%s\n",
            (boot_cpu_has(X86_FEATURE_SC_MSR_PV) ||
             boot_cpu_has(X86_FEATURE_SC_RSB_PV) ||
             boot_cpu_has(X86_FEATURE_IBPB_ENTRY_PV) ||
+            opt_bhb_entry_pv ||
             opt_eager_fpu || opt_verw_pv)            ? ""               : " None",
            boot_cpu_has(X86_FEATURE_SC_MSR_PV)       ? " MSR_SPEC_CTRL" : "",
            boot_cpu_has(X86_FEATURE_SC_RSB_PV)       ? " RSB"           : "",
            opt_eager_fpu                             ? " EAGER_FPU"     : "",
            opt_verw_pv                               ? " VERW"          : "",
-           boot_cpu_has(X86_FEATURE_IBPB_ENTRY_PV)   ? " IBPB-entry"    : "");
+           boot_cpu_has(X86_FEATURE_IBPB_ENTRY_PV)   ? " IBPB-entry"    : "",
+           opt_bhb_entry_pv                          ? " BHB-entry"     : "");
 
     printk("  XPTI (64-bit PV only): Dom0 %s, DomU %s (with%s PCID)\n",
            opt_xpti_hwdom ? "enabled" : "disabled",
@@ -1105,7 +1172,7 @@ static void __init ibpb_calculations(void)
          * NMI/#MC, so can't interrupt Xen ahead of having already flushed the
          * BTB.
          */
-        default_spec_ctrl_flags |= SCF_ist_ibpb;
+        default_scf |= SCF_ist_ibpb;
     }
     if ( opt_ibpb_entry_hvm )
         setup_force_cpu_cap(X86_FEATURE_IBPB_ENTRY_HVM);
@@ -1596,6 +1663,94 @@ static void __init gds_calculations(void)
     }
 }
 
+/*
+ * https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/technical-documentation/branch-history-injection.html
+ */
+static bool __init cpu_has_bug_bhi(void)
+{
+    /* BHI is only known to affect Intel Family 6 processors at this time. */
+    if ( boot_cpu_data.x86_vendor != X86_VENDOR_INTEL ||
+         boot_cpu_data.x86 != 6 )
+        return false;
+
+    if ( boot_cpu_has(X86_FEATURE_BHI_NO) )
+        return false;
+
+    if ( cpu_has_hypervisor )
+        return true; /* TODO: how to figure out out if we're really eIBRS levelled out? */
+
+    return cpu_has_eibrs;
+}
+
+static void __init bhi_calculations(void)
+{
+    bool has_bhi = cpu_has_bug_bhi();
+
+    /*
+     * To mitigate BHI, we want to use BHI_DIS_S wherever possible, or the
+     * short sequence otherwise.  Other forms are available on request.
+     *
+     * We are repsonsbile for performing default-conversion on opt_bhi_dis_s
+     * and opt_bhb_seq, irrespective of succeptibility to BHI.
+     */
+
+    if ( opt_bhi_dis_s == -1 )
+        opt_bhi_dis_s = has_bhi;
+
+    if ( !boot_cpu_has(X86_FEATURE_BHI_CTRL) )
+        opt_bhi_dis_s = false;
+
+    if ( opt_bhi_dis_s )
+        default_xen_spec_ctrl |= SPEC_CTRL_BHI_DIS_S;
+
+    if ( opt_bhb_seq == BHB_DEFAULT )
+    {
+        /*
+         * If we're using BHI_DIS_S, or we're not succeptable, don't activate
+         * the thunks.
+         */
+        if ( !has_bhi || opt_bhi_dis_s )
+            opt_bhb_seq = BHB_NONE;
+        else
+            opt_bhb_seq = BHB_SHORT;
+    }
+
+    /*
+     * We can use the TSX even if it's disabled for e.g. TAA reasons.
+     * However, fall back to the loop sequence if there is no trace of RTM at
+     * all, as XBEGIN will #UD.
+     */
+    if ( opt_bhb_seq == BHB_TSX && !cpu_has_rtm && !cpu_has_rtm_always_abort &&
+         !cpu_has_tsx_force_abort )
+        opt_bhb_seq = BHB_SHORT;
+
+    /*
+     * Only activate SCF_entry_bhb by for guests if a sequence is in place.
+     */
+    if ( opt_bhb_entry_pv == -1 )
+        opt_bhb_entry_pv = has_bhi && opt_bhb_seq != BHB_NONE;
+    if ( opt_bhb_entry_hvm == -1 )
+        opt_bhb_entry_hvm = has_bhi && opt_bhb_seq != BHB_NONE;
+
+    switch ( opt_bhb_seq )
+    {
+    case BHB_LONG:
+        setup_force_cpu_cap(X86_SPEC_BHB_LOOPS_LONG);
+        fallthrough;
+
+    case BHB_SHORT:
+        setup_force_cpu_cap(X86_SPEC_BHB_LOOPS);
+        break;
+
+    case BHB_TSX:
+        setup_force_cpu_cap(X86_SPEC_BHB_TSX);
+        break;
+
+    default:
+        break;
+    }
+}
+
 void spec_ctrl_init_domain(struct domain *d)
 {
     bool pv = is_pv_domain(d);
@@ -1606,9 +1761,13 @@ void spec_ctrl_init_domain(struct domain *d)
     bool ibpb = ((pv ? opt_ibpb_entry_pv : opt_ibpb_entry_hvm) &&
                  (d->domain_id != 0 || opt_ibpb_entry_dom0));
 
-    d->arch.spec_ctrl_flags =
+    bool bhb =  ((pv ? opt_bhb_entry_pv : opt_bhb_entry_hvm) &&
+                 (d->domain_id != 0 || opt_bhb_entry_dom0));
+
+    d->arch.scf =
         (verw   ? SCF_verw         : 0) |
         (ibpb   ? SCF_entry_ibpb   : 0) |
+        (bhb    ? SCF_entry_bhb    : 0) |
         0;
 }
 
@@ -1711,7 +1870,7 @@ void __init init_speculation_mitigations(void)
     {
         if ( opt_msr_sc_pv )
         {
-            default_spec_ctrl_flags |= SCF_ist_sc_msr;
+            default_scf |= SCF_ist_sc_msr;
             setup_force_cpu_cap(X86_FEATURE_SC_MSR_PV);
         }
 
@@ -1722,7 +1881,7 @@ void __init init_speculation_mitigations(void)
              * Xen's value is not restored atomically.  An early NMI hitting
              * the VMExit path needs to restore Xen's value for safety.
              */
-            default_spec_ctrl_flags |= SCF_ist_sc_msr;
+            default_scf |= SCF_ist_sc_msr;
             setup_force_cpu_cap(X86_FEATURE_SC_MSR_HVM);
         }
     }
@@ -1857,7 +2016,7 @@ void __init init_speculation_mitigations(void)
     if ( opt_rsb_pv )
     {
         setup_force_cpu_cap(X86_FEATURE_SC_RSB_PV);
-        default_spec_ctrl_flags |= SCF_ist_rsb;
+        default_scf |= SCF_ist_rsb;
     }
 
     /*
@@ -1880,7 +2039,7 @@ void __init init_speculation_mitigations(void)
          * possible rogue RSB speculation.
          */
         if ( !cpu_has_svm )
-            default_spec_ctrl_flags |= SCF_ist_rsb;
+            default_scf |= SCF_ist_rsb;
     }
 
     srso_calculations(hw_smt_enabled);
@@ -1893,7 +2052,7 @@ void __init init_speculation_mitigations(void)
     if ( opt_eager_fpu == -1 )
         opt_eager_fpu = should_use_eager_fpu();
 
-    /* (Re)init BSP state now that default_spec_ctrl_flags has been calculated. */
+    /* (Re)init BSP state now that default_scf has been calculated. */
     init_shadow_spec_ctrl_state();
 
     /*
@@ -2140,7 +2299,66 @@ void __init init_speculation_mitigations(void)
 
     gds_calculations();
 
+    bhi_calculations();
+
     print_details(thunk);
+
+    /*
+     * With the alternative blocks now chosen, see if we need any other
+     * adjustments for safety.
+     *
+     * We compile the LFENCE in, and patch it out if it's not needed.
+     *
+     * Notes:
+     *  - SPEC_CTRL_ENTRY_FROM_SVM doesn't need an LFENCE because it has an
+     *    unconditional STGI.
+     *  - SPEC_CTRL_ENTRY_FROM_IST handles its own safety, without the use of
+     *    alternatives.
+     *  - DO_OVERWRITE_RSB has conditional branches in it, but it's an inline
+     *    sequence.  It is considered safe for uarch reasons.
+     */
+    {
+        /*
+         * SPEC_CTRL_ENTRY_FROM_PV conditional safety
+         *
+         * A BHB sequence, if used, is a conditional action and last.  If we
+         * have this, then we must have the LFENCE.
+         *
+         * Otherwise, DO_SPEC_CTRL_ENTRY (X86_FEATURE_SC_MSR_PV if used) is an
+         * unconditional WRMSR.  If we do have it, or we're not using any
+         * prior conditional block, then it's safe to drop the LFENCE.
+         */
+        if ( !opt_bhb_entry_pv &&
+             (boot_cpu_has(X86_FEATURE_SC_MSR_PV) ||
+              !boot_cpu_has(X86_FEATURE_IBPB_ENTRY_PV)) )
+            setup_force_cpu_cap(X86_SPEC_NO_LFENCE_ENTRY_PV);
+
+        /*
+         * SPEC_CTRL_ENTRY_FROM_INTR conditional safety
+         *
+         * A BHB sequence, if used, is a conditional action and last.  If we
+         * have this, then we must have the LFENCE.
+         *
+         * Otherwise DO_SPEC_CTRL_ENTRY (X86_FEATURE_SC_MSR_PV if used) is an
+         * unconditional WRMSR.  If we have it, or we have no protections
+         * active in the block that is skipped when interrupting guest
+         * context, then it's safe to drop the LFENCE.
+         */
+        if ( !opt_bhb_entry_pv &&
+             (boot_cpu_has(X86_FEATURE_SC_MSR_PV) ||
+              (!boot_cpu_has(X86_FEATURE_IBPB_ENTRY_PV) &&
+               !boot_cpu_has(X86_FEATURE_SC_RSB_PV))) )
+            setup_force_cpu_cap(X86_SPEC_NO_LFENCE_ENTRY_INTR);
+
+        /*
+         * SPEC_CTRL_ENTRY_FROM_VMX conditional safety
+         *
+         * A BHB sequence, if used, is the only conditional action, so if we
+         * don't have it, we don't need the safety LFENCE.
+         */
+        if ( !opt_bhb_entry_hvm )
+            setup_force_cpu_cap(X86_SPEC_NO_LFENCE_ENTRY_VMX);
+    }
 
     /*
      * If MSR_SPEC_CTRL is available, apply Xen's default setting and discard
@@ -2166,7 +2384,7 @@ void __init init_speculation_mitigations(void)
         {
             info->shadow_spec_ctrl = 0;
             barrier();
-            info->spec_ctrl_flags |= SCF_use_shadow;
+            info->scf |= SCF_use_shadow;
             barrier();
         }
 

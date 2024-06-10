@@ -220,6 +220,11 @@ static void cf_check intel_ctxt_switch_masking(const struct vcpu *next)
 #undef LAZY
 }
 
+#ifdef CONFIG_XEN_IBT /* Announce the function to ENDBR clobbering logic. */
+static const typeof(ctxt_switch_masking) __initconst_cf_clobber __used csm =
+    intel_ctxt_switch_masking;
+#endif
+
 /*
  * opt_cpuid_mask_ecx/edx: cpuid.1[ecx, edx] feature mask.
  * For example, E8400[Intel Core 2 Duo Processor series] ecx = 0x0008E3FD,
@@ -598,7 +603,7 @@ static void cf_check init_intel(struct cpuinfo_x86 *c)
 		setup_clear_cpu_cap(X86_FEATURE_CLWB);
 }
 
-const struct cpu_dev intel_cpu_dev = {
+const struct cpu_dev __initconst_cf_clobber intel_cpu_dev = {
 	.c_early_init	= early_init_intel,
 	.c_init		= init_intel,
 };

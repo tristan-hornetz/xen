@@ -18,14 +18,16 @@ ENTRY(entry_int82)
         movl  $HYPERCALL_VECTOR, EFRAME_entry_vector(%rsp)
         SAVE_ALL compat=1 /* DPL1 gate, restricted to 32bit PV guests only. */
 
-        SPEC_CTRL_ENTRY_FROM_PV /* Req: %rsp=regs/cpuinfo, %rdx=0, Clob: acd */
+        GET_STACK_END(14)
+
+        SPEC_CTRL_ENTRY_FROM_PV /* Req: %rsp=regs/cpuinfo, %r14=end, %rdx=0, Clob: abcd */
         /* WARNING! `ret`, `call *`, `jmp *` not safe before this point. */
 
         sti
 
         CR4_PV32_RESTORE
 
-        GET_CURRENT(bx)
+        movq STACK_CPUINFO_FIELD(current_vcpu)(%r14), %rbx
 
         mov   %rsp, %rdi
         call  do_entry_int82
@@ -164,8 +166,8 @@ ENTRY(compat_restore_all_guest)
 
         /* Account for ev/ec having already been popped off the stack. */
         SPEC_CTRL_COND_VERW \
-            scf=STK_REL(CPUINFO_spec_ctrl_flags, CPUINFO_rip), \
-            sel=STK_REL(CPUINFO_verw_sel,        CPUINFO_rip)
+            scf=STK_REL(CPUINFO_scf,      CPUINFO_rip), \
+            sel=STK_REL(CPUINFO_verw_sel, CPUINFO_rip)
 
 .Lft0:  iretq
         _ASM_PRE_EXTABLE(.Lft0, handle_exception)
