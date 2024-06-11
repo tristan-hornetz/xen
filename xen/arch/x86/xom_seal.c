@@ -455,10 +455,11 @@ unsigned char get_reg_clear_type(const struct cpu_user_regs* const regs) {
     if(!regs || !~(uintptr_t)regs)
         return ret;
 
-    spin_lock(&d->xom_page_lock);
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
-        goto out;
+        return ret;
+
+    spin_lock(&d->xom_page_lock);
 
     info = get_page_info_entry(&d->xom_reg_clear_pages, instr_gfn);
     if(!info)
