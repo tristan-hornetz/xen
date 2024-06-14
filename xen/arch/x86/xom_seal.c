@@ -38,13 +38,16 @@ struct {
 
 // TODO: Replace with rbtree at some point to improve performance
 static xom_page_info* get_page_info_entry(const struct list_head* const lhead, const gfn_t gfn){
-    const struct list_head* next = lhead->next;
+    const struct list_head* next;
 
-    while(next && next != lhead){
+    if(!lhead)
+        return NULL;
+
+    for (next = lhead->next; next && next != lhead; next = next->next) {
         if(((xom_page_info*)next)->gfn == gfn)
             return (xom_page_info*)next;
-        next = next->next;
     }
+
     return NULL;
 }
 
@@ -285,48 +288,6 @@ static int write_into_subpage(struct domain* d, gfn_t gfn_dest, gfn_t gfn_src){
     return 0;
 }
 
-static int map_secret_page_to_guest(struct domain* d, gfn_t gfn_dest) {
-    int status;
-    char* xom_page;
-    struct p2m_domain *p2m;
-    struct page_info *page;
-    xom_page_info* subpage_info;
-
-    status = create_xom_subpages(d, gfn_dest, 1);
-    if ( status < 0 )
-        return status;
-
-    subpage_info = get_page_info_entry(&d->xom_subpages, gfn_dest);
-    if(!subpage_info)
-        return -EINVAL;
-
-    p2m = p2m_get_hostp2m(d);
-
-    gfn_lock(p2m, gfn_dest, 0);
-    page = get_page_from_gfn(d, gfn_x(gfn_dest), NULL, P2M_ALLOC);
-    if(!page){
-        gfn_unlock(p2m, gfn_dest, 0);
-        return -EINVAL;
-    }
-    if (!get_page_type(page, PGT_writable_page)) {
-        put_page(page);
-        gfn_unlock(p2m, gfn_dest, 0);
-        return -EPERM;
-    }
-    xom_page = (char*) __map_domain_page(page);
-
-    // Copy code for AES
-    memcpy(xom_page, aes_gctr_linear, PAGE_SIZE);
-    subpage_info->info.lock_status = ~0u;
-
-    // Cleanup
-    unmap_domain_page(xom_page);
-    gfn_unlock(p2m, gfn_dest, 0);
-    put_page_and_type(page);
-
-    return 0;
-}
-
 static int mark_reg_clear_page(struct domain* d, gfn_t gfn, unsigned int reg_clear_type) {
     xom_page_info* page_info;
     struct p2m_domain *p2m;
@@ -398,9 +359,6 @@ int handle_xom_seal(struct vcpu* curr,
             case MMUEXT_WRITE_XOM_SPAGES:
                 rc = write_into_subpage(d, _gfn(op.arg1.mfn), _gfn(op.arg2.src_mfn));
                 break;
-            case MMUEXT_GET_SECRET_PAGE:
-                rc = map_secret_page_to_guest(d, _gfn(op.arg1.mfn));
-                break;
             case MMUEXT_MARK_REG_CLEAR:
                 rc =  mark_reg_clear_page(d, _gfn(op.arg1.mfn), op.arg2.nr_ents);
                 break;
@@ -433,6 +391,7 @@ static inline unsigned long gfn_of_rip(const unsigned long rip) {
     struct vcpu *curr = current;
     struct segment_register sreg;
     uint32_t pfec = PFEC_page_present | PFEC_insn_fetch | PFEC_user_mode;
+    unsigned long ret;
 
     if ( unlikely(!curr || !~(uintptr_t)curr) )
         return gfn_x(INVALID_GFN);
@@ -442,7 +401,11 @@ static inline unsigned long gfn_of_rip(const unsigned long rip) {
 
     hvm_get_segment_register(curr, x86_seg_cs, &sreg);
 
-    return paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
+    vmx_vmcs_enter(curr);
+    ret = paging_gva_to_gfn(curr, sreg.base + rip, &pfec);
+    vmx_vmcs_exit(curr);
+
+    return ret;
 }
 
 unsigned char get_reg_clear_type(const struct cpu_user_regs* const regs) {
@@ -454,6 +417,9 @@ unsigned char get_reg_clear_type(const struct cpu_user_regs* const regs) {
 
     if(!regs || !~(uintptr_t)regs)
         return ret;
+    
+    if (!is_hvm_domain(d) || !hap_enabled(d))
+        return ret;
 
     instr_gfn = _gfn(gfn_of_rip(regs->rip));
     if ( unlikely(gfn_eq(instr_gfn, INVALID_GFN)) )
@@ -462,11 +428,9 @@ unsigned char get_reg_clear_type(const struct cpu_user_regs* const regs) {
     spin_lock(&d->xom_page_lock);
 
     info = get_page_info_entry(&d->xom_reg_clear_pages, instr_gfn);
-    if(!info)
-        goto out;
+    if(info)
+        ret = info->info.reg_clear_type;
 
-    ret = info->info.reg_clear_type;
-out:
     spin_unlock(&d->xom_page_lock);
     return ret;
 }

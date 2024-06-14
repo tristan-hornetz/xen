@@ -1077,22 +1077,6 @@ void svm_vmenter_helper(void)
     vmcb->rip = regs->rip;
     vmcb->rsp = regs->rsp;
     vmcb->rflags = regs->rflags | X86_EFLAGS_MBS;
-
-    // If SSE is supported and xmm15 contains a magic number, clear r15 and all vector registers
-    if (!cpu_has_sse3)
-        return;
-    if (!is_reg_clear_magic())
-        return;
-
-    regs->r15 = 0xbabababababababaull;
-
-    if (cpu_has_avx512f)
-        clear_avx512_regs();
-    else if (cpu_has_avx)
-        clear_avx_regs();
-    else
-        clear_sse_regs();
-
 }
 
 static void svm_guest_osvw_init(struct domain *d)
