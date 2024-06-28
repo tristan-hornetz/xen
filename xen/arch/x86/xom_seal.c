@@ -16,6 +16,10 @@
 #define SUBPAGE_SIZE (PAGE_SIZE / (sizeof(uint32_t) << 3))
 #define MAX_SUBPAGES_PER_CMD ((PAGE_SIZE - sizeof(uint8_t)) / (sizeof(xom_subpage_write_info)))
 
+#ifndef XEN_XOM_SEAL_DEBUG
+#define gdprintk(...)
+#endif
+
 struct {
     struct list_head lhead;
     gfn_t gfn;
