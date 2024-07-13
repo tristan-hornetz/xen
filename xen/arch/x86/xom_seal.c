@@ -2,7 +2,7 @@
 #ifdef CONFIG_HVM
 #include <xen/mem_access.h>
 #include <xen/sched.h>
-#include <xen/list.h>
+#include <xen/rbtree.h>
 #include <xen/xmalloc.h>
 #include <xen/guest_access.h>
 #include <xen/domain_page.h>
@@ -20,13 +20,15 @@
 #define gdprintk(...)
 #endif
 
-struct {
-    struct list_head lhead;
-    gfn_t gfn;
-    union {
+typedef union {
         uint32_t lock_status;
         uint8_t reg_clear_type;
-    } info;
+} info_spec_t;
+
+struct {
+    struct rb_node node;
+    gfn_t gfn;
+    info_spec_t info;
 } typedef xom_page_info;
 
 struct {
@@ -39,17 +41,73 @@ struct {
     xom_subpage_write_info write_info [MAX_SUBPAGES_PER_CMD];
 } typedef xom_subpage_write_command;
 
+static int insert_page_info_node(struct rb_root* root, xom_page_info* info) {
+	struct rb_node **new, *parent;
+    xom_page_info* this;
 
-// TODO: Replace with rbtree at some point to improve performance
-static xom_page_info* get_page_info_entry(const struct list_head* const lhead, const gfn_t gfn){
-    const struct list_head* next;
+	new = &root->rb_node;
+	parent = NULL;
 
-    if(!lhead)
+	while (*new) {
+		this = container_of(*new, xom_page_info, node);
+
+		parent = *new;
+		if (gfn_x(info->gfn) < gfn_x(this->gfn))
+			new = &((*new)->rb_left);
+		else if (gfn_x(info->gfn) > gfn_x(this->gfn))
+			new = &((*new)->rb_right);
+		else
+			return -EEXIST;
+	}
+
+	rb_link_node(&info->node, parent, new);
+	rb_insert_color(&info->node, root);
+	return 0;
+}
+
+static xom_page_info* add_page_info_entry(struct rb_root* root, const gfn_t gfn, info_spec_t info){
+    xom_page_info *data  = xmalloc(xom_page_info); 
+
+    if(!data)
+        return NULL;
+    
+    *data = (xom_page_info) {
+        .gfn = gfn,
+        .info = info,
+    };
+    RB_CLEAR_NODE(&data->node);
+
+    if (insert_page_info_node(root, data) < 0) {
+        xfree(data);
+        return NULL;
+    }
+
+    return data;
+}
+
+static void rm_page_info_entry(struct rb_root *root, xom_page_info *data) {
+    rb_erase(&data->node, root);
+    xfree(data);
+}
+
+static xom_page_info* get_page_info_entry(struct rb_root* root, const gfn_t gfn){
+    struct rb_node *node;
+    xom_page_info *entry;
+
+    if(!root)
         return NULL;
 
-    for (next = lhead->next; next && next != lhead; next = next->next) {
-        if(((xom_page_info*)next)->gfn == gfn)
-            return (xom_page_info*)next;
+    node = root->rb_node;
+
+    while (node) {
+        entry = container_of(node, xom_page_info, node);
+
+        if (gfn_x(gfn) < gfn_x(entry->gfn))
+            node = node->rb_left;
+        else if (gfn_x(gfn) > gfn_x(entry->gfn))
+            node = node->rb_right;
+        else
+            return entry;
     }
 
     return NULL;
@@ -149,16 +207,12 @@ static int clear_xom_seal(struct domain* d, gfn_t gfn, unsigned int nr_pages){
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_rwx, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
 
-        page_info = get_page_info_entry(&d->xom_subpages, gfn);
-        if(page_info){
-            list_del(&page_info->lhead);
-            xfree(page_info);
-        }
-        page_info = get_page_info_entry(&d->xom_reg_clear_pages, gfn);
-        if (page_info) {
-            list_del(&page_info->lhead);
-            xfree(page_info);
-        }
+        page_info = get_page_info_entry(&d->xom_subpages, c_gfn);
+        if(page_info)
+            rm_page_info_entry(&d->xom_subpages, page_info);
+        page_info = get_page_info_entry(&d->xom_reg_clear_pages, c_gfn);
+        if (page_info)
+            rm_page_info_entry(&d->xom_reg_clear_pages, page_info);
     }
 
 exit:
@@ -191,12 +245,6 @@ static int create_xom_subpages(struct domain* d, gfn_t gfn, unsigned int nr_page
     for ( i = 0; i < nr_pages; i++) {
         c_gfn = _gfn(gfn_x(gfn) + i);
 
-        subpage_info = xmalloc(xom_page_info);
-        if(!subpage_info)
-            return -ENOMEM;
-
-        memset(subpage_info, 0, sizeof(*subpage_info));
-
         gfn_lock(p2m, c_gfn, 0);
         // Check whether the provided gfn is a XOM page already
         p2m->get_entry(p2m, c_gfn, &ptype, &atype, 0, NULL, NULL);
@@ -210,14 +258,15 @@ static int create_xom_subpages(struct domain* d, gfn_t gfn, unsigned int nr_page
         ret = p2m_set_mem_access_single(d, p2m, NULL, p2m_access_x, c_gfn);
         gfn_unlock(p2m, c_gfn, 0);
 
-        subpage_info->gfn = c_gfn;
-        list_add(&subpage_info->lhead, &d->xom_subpages);
-        subpage_info = NULL;
+        
+        subpage_info = add_page_info_entry(&d->xom_subpages, c_gfn, (info_spec_t) {.lock_status = 0});
+        if (!subpage_info) {
+            ret = -ENOMEM;
+            goto exit;
+        }
     }
 
 exit:
-    if(subpage_info)
-        xfree(subpage_info);
     p2m->tlb_flush(p2m);
     return ret;
 }
@@ -314,16 +363,10 @@ static int mark_reg_clear_page(struct domain* d, gfn_t gfn, unsigned int reg_cle
     if (atype != p2m_access_x)
         return -EINVAL;
 
-    page_info = xmalloc(xom_page_info);
-    if(!page_info)
+
+    page_info = add_page_info_entry(&d->xom_reg_clear_pages, gfn, (info_spec_t){.reg_clear_type = reg_clear_type});
+    if (!page_info)
         return -ENOMEM;
-
-    *page_info = (xom_page_info) {
-        .gfn = gfn,
-        .info = {.reg_clear_type = reg_clear_type}
-    };
-
-    list_add(&page_info->lhead, &d->xom_reg_clear_pages);
 
     return 0;
 }
@@ -381,14 +424,27 @@ int handle_xom_seal(struct vcpu* curr,
     return 0;
 }
 
-void free_xom_llist(struct list_head* lhead) {
-    struct list_head* next = lhead->next, *last;
+static void free_xom_info_node(struct rb_node *node) {
+    xom_page_info *data;
 
-    while(next != lhead){
-        last = next;
-        next = next->next;
-        xfree(last);
-    }
+    if (!node)
+        return;
+
+    data = rb_entry(node, xom_page_info, node);
+    
+    if (node->rb_left)
+        free_xom_info_node(node->rb_left);
+    if (node->rb_right)
+        free_xom_info_node(node->rb_right);
+    
+    xfree(data);
+}
+
+void free_xom_info(struct rb_root* root) {
+    if (root->rb_node)
+        free_xom_info_node(root->rb_node);
+    
+    *root = RB_ROOT;    
 }
 
 static inline unsigned long gfn_of_rip(const unsigned long rip) {

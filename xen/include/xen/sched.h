@@ -13,6 +13,7 @@
 #include <xen/rcupdate.h>
 #include <xen/cpumask.h>
 #include <xen/nodemask.h>
+#include <xen/rbtree.h>
 #include <xen/radix-tree.h>
 #include <xen/multicall.h>
 #include <xen/nospec.h>
@@ -603,8 +604,8 @@ struct domain
 #endif
 #ifdef CONFIG_HVM
     spinlock_t xom_page_lock;
-    struct list_head xom_subpages;
-    struct list_head xom_reg_clear_pages;
+    struct rb_root xom_subpages;
+    struct rb_root xom_reg_clear_pages;
 #endif
 
     /* Holding CDF_* constant. Internal flags for domain creation. */
