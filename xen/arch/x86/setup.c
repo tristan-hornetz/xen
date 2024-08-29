@@ -786,6 +786,14 @@ unsigned int xen_msr_s_cet_value(void)
 unsigned int xen_msr_s_cet_value(void); /* To avoid ifdefary */
 #endif
 
+static void debug_print_feature_ctrl_mrs(void) {
+    unsigned long hi, lo;
+
+    rdmsr(MSR_IA32_FEATURE_CONTROL, hi, lo);
+
+    printk(XENLOG_WARNING "MSR_IA32_FEATURE_CONTROL is (0x%lx, 0x%lx)\n", hi, lo);
+}
+
 /* Reinitalise all state referring to the old virtual address of the stack. */
 static void __init noreturn reinit_bsp_stack(void)
 {
@@ -829,6 +837,7 @@ ignore_param("edid");
  * first parameter.
  */
 ignore_param("placeholder");
+
 
 static bool __init loader_is_grub2(const char *loader_name)
 {
@@ -1076,6 +1085,8 @@ void __init noreturn __start_xen(unsigned long mbi_p)
     printk("Xen image load base address: %#lx\n", xen_phys_start);
     if ( hypervisor_name )
         printk("Running on %s\n", hypervisor_name);
+
+    debug_print_feature_ctrl_mrs();
 
 #ifdef CONFIG_VIDEO
     printk("Video information:\n");
