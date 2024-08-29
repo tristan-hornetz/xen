@@ -786,14 +786,6 @@ unsigned int xen_msr_s_cet_value(void)
 unsigned int xen_msr_s_cet_value(void); /* To avoid ifdefary */
 #endif
 
-static void debug_print_feature_ctrl_mrs(void) {
-    unsigned long hi, lo;
-
-    rdmsr(MSR_IA32_FEATURE_CONTROL, hi, lo);
-
-    printk(XENLOG_WARNING "MSR_IA32_FEATURE_CONTROL is (0x%lx, 0x%lx)\n", hi, lo);
-}
-
 /* Reinitalise all state referring to the old virtual address of the stack. */
 static void __init noreturn reinit_bsp_stack(void)
 {
@@ -988,6 +980,7 @@ void __init noreturn __start_xen(unsigned long mbi_p)
     multiboot_info_t *mbi;
     module_t *mod;
     unsigned long nr_pages, raw_max_page, modules_headroom, module_map[1];
+    unsigned long ftc_hi, ftc_lo;
     int i, j, e820_warn = 0, bytes = 0;
     unsigned long eb_start, eb_end;
     bool acpi_boot_table_init_done = false, relocated = false;
@@ -1086,7 +1079,9 @@ void __init noreturn __start_xen(unsigned long mbi_p)
     if ( hypervisor_name )
         printk("Running on %s\n", hypervisor_name);
 
-    debug_print_feature_ctrl_mrs();
+    rdmsr(MSR_IA32_FEATURE_CONTROL, ftc_lo, ftc_hi);
+
+    printk("MSR_IA32_FEATURE_CONTROL is (0x%lx, 0x%lx)\n", ftc_hi, ftc_lo);
 
 #ifdef CONFIG_VIDEO
     printk("Video information:\n");
